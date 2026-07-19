@@ -1,6 +1,6 @@
 # vibecode-aio
 
-One Alpine-based Docker image (multi-stage build) that installs and runs:
+Multi-stage Docker images that install and run:
 
 | App | Role | Package |
 | --- | --- | --- |
@@ -8,13 +8,21 @@ One Alpine-based Docker image (multi-stage build) that installs and runs:
 | [OpenCode](https://github.com/anomalyco/opencode) | AI coding agent (managed by OpenChamber) | `opencode-ai` |
 | [OpenChamber](https://github.com/openchamber/openchamber) | Web UI for OpenCode | `@openchamber/web` |
 
+## Variants
+
+| Target | Base | Node | OpenCode binary | Default |
+| --- | --- | --- | --- | --- |
+| `alpine` | `oven/bun` Alpine | Node LTS (from builder) | musl | yes |
+| `debian` | `oven/bun` Debian | Node LTS (from builder) | glibc | no |
+
 ## Quick start
 
 ```bash
 cp .env.example .env
 # edit .env and set strong secrets
 
-docker build -t vibecode-aio .
+# Alpine (default, smaller)
+docker build -t vibecode-aio:alpine --target alpine .
 docker run --rm --env-file .env \
   -p 3000:3000 \
   -p 20128:20128 \
@@ -24,7 +32,23 @@ docker run --rm --env-file .env \
   -v vibecode-opencode-state:/home/bun/.local/state/opencode \
   -v vibecode-9router:/home/bun/.local/share/9router \
   -v vibecode-workspaces:/home/bun/workspaces \
-  vibecode-aio
+  vibecode-aio:alpine
+```
+
+Debian (non-Alpine):
+
+```bash
+docker build -t vibecode-aio:debian --target debian .
+docker run --rm --env-file .env \
+  -p 3000:3000 \
+  -p 20128:20128 \
+  -v vibecode-openchamber:/home/bun/.config/openchamber \
+  -v vibecode-opencode-config:/home/bun/.config/opencode \
+  -v vibecode-opencode-share:/home/bun/.local/share/opencode \
+  -v vibecode-opencode-state:/home/bun/.local/state/opencode \
+  -v vibecode-9router:/home/bun/.local/share/9router \
+  -v vibecode-workspaces:/home/bun/workspaces \
+  vibecode-aio:debian
 ```
 
 ## URLs
@@ -55,11 +79,11 @@ Copy `.env.example` to `.env` and set the required values:
 Pinned package versions (override at build time):
 
 ```bash
-docker build \
+docker build --target alpine \
   --build-arg NINEROUTER_VERSION=0.5.35 \
   --build-arg OPENCODE_VERSION=1.18.3 \
   --build-arg OPENCHAMBER_VERSION=1.16.2 \
-  -t vibecode-aio .
+  -t vibecode-aio:alpine .
 ```
 
 ## Volumes
@@ -75,13 +99,23 @@ docker build \
 
 ## Build layout
 
-Multi-stage Dockerfile:
+Both targets use multi-stage builds:
 
-1. **packages** (`node:22-alpine`) — install npm packages and compile native addons (`g++` / `make` / `python3` stay only in this stage)
-2. **runtime** (`oven/bun:1.3.14-alpine`) — copy installed packages into a slim image with Bun, Node, and runtime tools only
+1. **packages-*** (`node:lts-alpine` or `node:lts-bookworm-slim`) — install npm packages and compile native addons (`g++` / `make` / `python3` stay only in this stage)
+2. **runtime** (`oven/bun` Alpine or Debian) — copy installed packages into a slim image with Bun and runtime tools only
+
+Default `docker build` target is `alpine` (last stage). Explicit targets:
+
+```bash
+docker build --target alpine -t vibecode-aio:alpine .
+docker build --target debian -t vibecode-aio:debian .
+```
+
+Package install stages use **Node.js LTS** (`node:lts-alpine` / `node:lts-bookworm-slim`).
 
 ## Notes
 
 - OpenCode is started by OpenChamber automatically.
 - Point OpenCode at 9router (`http://127.0.0.1:20128/v1`) from OpenCode/OpenChamber provider settings when you want model traffic routed through 9router.
 - The image entrypoint starts 9router and OpenChamber together and stops both on container shutdown.
+- Prefer Alpine for smaller images; use Debian if you need glibc compatibility.
