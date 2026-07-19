@@ -1,0 +1,8 @@
+.env
+.git
+.gitignore
+Dockerfile*
+compose*.yml
+README*
+data
+workspaces
