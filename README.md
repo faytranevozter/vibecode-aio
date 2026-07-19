@@ -137,12 +137,13 @@ ghcr.io/faytranevozter/vibecode-aio
 | --- | --- | --- | --- |
 | **CI** | `.github/workflows/ci.yml` | PR/push changing Dockerfile, entrypoint, VERSION, package.json, workflows, or scripts | Builds `alpine` and `debian` (no push); smoke-checks CLIs |
 | **Release** | `.github/workflows/release.yml` | Push tag `v*.*.*` | Builds both targets and **pushes** to GHCR |
-| **Watch upstream** | `.github/workflows/watch-upstream.yml` | Daily cron + `workflow_dispatch` | Compares Dockerfile ARGs to npm latest; opens a **PR** that bumps ARGs + patch semver (no auto-merge, no auto-tag) |
+| **Watch upstream** | `.github/workflows/watch-upstream.yml` | Every 3 hours + `workflow_dispatch` | Compares Dockerfile ARGs to npm latest; opens a **PR** that bumps ARGs + patch semver (no auto-merge, no auto-tag) |
 
 ### Image tags (on release `vX.Y.Z`)
 
 | Tag | Meaning |
 | --- | --- |
+| `vX.Y.Z` | Default release tag → **alpine** |
 | `vX.Y.Z-alpine` | Immutable alpine build for that release |
 | `vX.Y.Z-debian` | Immutable debian build for that release |
 | `alpine` | Floating latest alpine |
@@ -152,6 +153,7 @@ ghcr.io/faytranevozter/vibecode-aio
 Examples (for git tag `v0.1.0`):
 
 ```text
+ghcr.io/faytranevozter/vibecode-aio:v0.1.0
 ghcr.io/faytranevozter/vibecode-aio:v0.1.0-alpine
 ghcr.io/faytranevozter/vibecode-aio:v0.1.0-debian
 ghcr.io/faytranevozter/vibecode-aio:alpine

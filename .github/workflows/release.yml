@@ -80,6 +80,7 @@ jobs:
             latest=false
           tags: |
             type=raw,value=v${{ steps.meta.outputs.version }}-${{ matrix.target }}
+            type=raw,value=v${{ steps.meta.outputs.version }},enable=${{ matrix.is_default }}
             type=raw,value=${{ matrix.target }}
             type=raw,value=latest,enable=${{ matrix.is_default }}
           labels: |
