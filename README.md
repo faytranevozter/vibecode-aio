@@ -113,6 +113,90 @@ docker build --target debian -t vibecode-aio:debian .
 
 Package install stages use **Node.js LTS** (`node:lts-alpine` / `node:lts-bookworm-slim`).
 
+## Versioning
+
+| File | Role |
+| --- | --- |
+| `VERSION` | **Source of truth** for vibecode-aio semver (e.g. `0.1.0`) |
+| `package.json` | Mirrors `VERSION` for tooling convenience |
+| `Dockerfile` `ARG NINEROUTER_VERSION` / `OPENCODE_VERSION` / `OPENCHAMBER_VERSION` | Pinned upstream npm package versions |
+
+Release git tags must match `VERSION` with a `v` prefix (example: `VERSION=0.1.0` → tag `v0.1.0`).
+
+## GitHub Actions & GHCR
+
+Images publish to:
+
+```text
+ghcr.io/faytranevozter/vibecode-aio
+```
+
+### Workflows
+
+| Workflow | File | Trigger | What it does |
+| --- | --- | --- | --- |
+| **CI** | `.github/workflows/ci.yml` | PR/push changing Dockerfile, entrypoint, VERSION, package.json, workflows, or scripts | Builds `alpine` and `debian` (no push); smoke-checks CLIs |
+| **Release** | `.github/workflows/release.yml` | Push tag `v*.*.*` | Builds both targets and **pushes** to GHCR |
+| **Watch upstream** | `.github/workflows/watch-upstream.yml` | Daily cron + `workflow_dispatch` | Compares Dockerfile ARGs to npm latest; opens a **PR** that bumps ARGs + patch semver (no auto-merge, no auto-tag) |
+
+### Image tags (on release `vX.Y.Z`)
+
+| Tag | Meaning |
+| --- | --- |
+| `vX.Y.Z-alpine` | Immutable alpine build for that release |
+| `vX.Y.Z-debian` | Immutable debian build for that release |
+| `alpine` | Floating latest alpine |
+| `debian` | Floating latest debian |
+| `latest` | Same as alpine (default variant) |
+
+Examples (for git tag `v0.1.0`):
+
+```text
+ghcr.io/faytranevozter/vibecode-aio:v0.1.0-alpine
+ghcr.io/faytranevozter/vibecode-aio:v0.1.0-debian
+ghcr.io/faytranevozter/vibecode-aio:alpine
+ghcr.io/faytranevozter/vibecode-aio:debian
+ghcr.io/faytranevozter/vibecode-aio:latest
+```
+
+### Publish a release (human steps)
+
+1. Merge any open upstream-bump PR (or edit `VERSION` / Dockerfile ARGs yourself).
+2. Ensure CI is green on `main`.
+3. Tag and push (tag must equal `VERSION`):
+
+```bash
+git checkout main && git pull
+git tag "v$(tr -d '[:space:]' < VERSION)"
+git push origin "v$(tr -d '[:space:]' < VERSION)"
+```
+
+4. Confirm the **Release** workflow succeeded and images appear under the repo **Packages** tab.
+
+### Required GitHub settings
+
+| Permission / setting | Why |
+| --- | --- |
+| `packages: write` (Release workflow `GITHUB_TOKEN`) | Push to GHCR |
+| `contents: write` + `pull-requests: write` (Watch upstream) | Open dependency bump PRs |
+| Actions enabled | Run workflows |
+| Package visibility | Set GHCR package public/private as needed after first push |
+
+No extra secrets are required for GHCR when using `GITHUB_TOKEN` on the same repository.
+
+### Local helpers
+
+```bash
+# Compare Dockerfile ARGs to npm latest
+./scripts/check-upstream.sh
+
+# Write newer ARGs into Dockerfile (used by CI watch job)
+./scripts/check-upstream.sh --write
+
+# Bump patch|minor|major in VERSION + package.json
+./scripts/bump-semver.sh patch
+```
+
 ## Notes
 
 - OpenCode is started by OpenChamber automatically.

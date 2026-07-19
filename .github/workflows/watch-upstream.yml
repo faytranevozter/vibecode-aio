@@ -1,0 +1,106 @@
+name: Watch upstream
+
+on:
+  schedule:
+    # Daily 06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: watch-upstream
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check npm packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Make scripts executable
+        run: chmod +x scripts/check-upstream.sh scripts/bump-semver.sh
+
+      - name: Detect upstream updates
+        id: upstream
+        run: |
+          set -eu
+          # shellcheck disable=SC1091
+          eval "$(scripts/check-upstream.sh)"
+          echo "changed=${CHANGED}" >> "$GITHUB_OUTPUT"
+          echo "ninerouter_current=${NINEROUTER_CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "ninerouter_latest=${NINEROUTER_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "opencode_current=${OPENCODE_CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "opencode_latest=${OPENCODE_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "openchamber_current=${OPENCHAMBER_CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "openchamber_latest=${OPENCHAMBER_LATEST}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Upstream check"
+            echo ""
+            echo "| Package | Dockerfile | npm latest |"
+            echo "| --- | --- | --- |"
+            echo "| 9router | ${NINEROUTER_CURRENT} | ${NINEROUTER_LATEST} |"
+            echo "| opencode-ai | ${OPENCODE_CURRENT} | ${OPENCODE_LATEST} |"
+            echo "| @openchamber/web | ${OPENCHAMBER_CURRENT} | ${OPENCHAMBER_LATEST} |"
+            echo ""
+            echo "CHANGED=${CHANGED}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply bumps
+        if: steps.upstream.outputs.changed == '1'
+        id: bump
+        run: |
+          set -eu
+          scripts/check-upstream.sh --write
+          # shellcheck disable=SC1091
+          eval "$(scripts/bump-semver.sh patch)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "VERSION=${VERSION}"
+          git diff --stat
+
+      - name: Create pull request
+        if: steps.upstream.outputs.changed == '1'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore(deps): bump upstream packages (v${{ steps.bump.outputs.version }})
+
+            - 9router: ${{ steps.upstream.outputs.ninerouter_current }} → ${{ steps.upstream.outputs.ninerouter_latest }}
+            - opencode-ai: ${{ steps.upstream.outputs.opencode_current }} → ${{ steps.upstream.outputs.opencode_latest }}
+            - @openchamber/web: ${{ steps.upstream.outputs.openchamber_current }} → ${{ steps.upstream.outputs.openchamber_latest }}
+          title: "chore(deps): bump upstream packages (v${{ steps.bump.outputs.version }})"
+          body: |
+            Automated upstream version check.
+
+            | Package | Before | After |
+            | --- | --- | --- |
+            | 9router | `${{ steps.upstream.outputs.ninerouter_current }}` | `${{ steps.upstream.outputs.ninerouter_latest }}` |
+            | opencode-ai | `${{ steps.upstream.outputs.opencode_current }}` | `${{ steps.upstream.outputs.opencode_latest }}` |
+            | @openchamber/web | `${{ steps.upstream.outputs.openchamber_current }}` | `${{ steps.upstream.outputs.openchamber_latest }}` |
+
+            **vibecode-aio** semver bumped to **v${{ steps.bump.outputs.version }}** (`VERSION` + `package.json`).
+
+            ### After merge
+            1. Confirm CI build smoke passed.
+            2. Create and push the release tag (must match `VERSION`):
+               ```bash
+               git checkout main && git pull
+               git tag "v$(tr -d '[:space:]' < VERSION)"
+               git push origin "v$(tr -d '[:space:]' < VERSION)"
+               ```
+            3. The **Release** workflow publishes images to GHCR.
+
+            This PR does **not** auto-merge or create a git tag.
+          branch: deps/upstream-${{ steps.bump.outputs.version }}
+          delete-branch: true
+          labels: dependencies,automated
