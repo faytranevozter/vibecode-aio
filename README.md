@@ -45,8 +45,8 @@ Health: `GET /health` (OpenChamber), `GET /api/health` (9router).
 | --- | --- |
 | `latest` or `alpine` | Everyday use (default, smaller Alpine image) |
 | `debian` | You need glibc instead of musl |
-| `v0.1.0` | Pin a release (same as that release’s alpine) |
-| `v0.1.0-alpine` / `v0.1.0-debian` | Pin a specific variant of a release |
+| `v0.1.1` | Pin a release (same as that release’s alpine) |
+| `v0.1.1-alpine` / `v0.1.1-debian` | Pin a specific variant of a release |
 
 Private package? Log in first:
 
