@@ -81,12 +81,15 @@ RUN apt-get update \
         tini \
         xz-utils \
     && rm -rf /var/lib/apt/lists/* \
-    && if ! id -u bun >/dev/null 2>&1; then \
-         groupadd --gid 1000 bun \
-         && useradd --uid 1000 --gid bun --create-home --shell /bin/bash bun; \
+    && if id -u bun >/dev/null 2>&1; then \
+         usermod -l vibecoder bun; \
+         groupmod -n vibecoder bun 2>/dev/null || true; \
+         usermod -d /home/vibecoder -m vibecoder; \
+       elif ! id -u vibecoder >/dev/null 2>&1; then \
+         groupadd --gid 1000 vibecoder; \
+         useradd --uid 1000 --gid vibecoder --create-home --shell /bin/bash vibecoder; \
        fi
 
-# Node LTS binary from packages stage (keeps Node current without apt nodejs)
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-debian /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
@@ -94,30 +97,30 @@ RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
     && node --version
 
-ENV HOME=/home/bun \
+ENV HOME=/home/vibecoder \
     OPENCHAMBER_HOST=0.0.0.0 \
-    OPENCODE_CONFIG_DIR=/home/bun/.config/opencode \
+    OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \
     HOSTNAME=0.0.0.0 \
-    DATA_DIR=/home/bun/.local/share/9router \
+    DATA_DIR=/home/vibecoder/.local/share/9router \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN mkdir -p \
-        /home/bun/.config/openchamber \
-        /home/bun/.config/opencode \
-        /home/bun/.local/share/opencode \
-        /home/bun/.local/state/opencode \
-        /home/bun/.local/share/9router \
-        /home/bun/workspaces \
-    && chown -R bun:bun /home/bun
+        /home/vibecoder/.config/openchamber \
+        /home/vibecoder/.config/opencode \
+        /home/vibecoder/.local/share/opencode \
+        /home/vibecoder/.local/state/opencode \
+        /home/vibecoder/.local/share/9router \
+        /home/vibecoder/workspaces \
+    && chown -R vibecoder:vibecoder /home/vibecoder
 
-COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
 RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
 
-USER bun
-WORKDIR /home/bun/workspaces
+USER vibecoder
+WORKDIR /home/vibecoder/workspaces
 
-VOLUME ["/home/bun/.config/openchamber", "/home/bun/.config/opencode", "/home/bun/.local/share/opencode", "/home/bun/.local/state/opencode", "/home/bun/.local/share/9router", "/home/bun/workspaces"]
+VOLUME ["/home/vibecoder/.config/openchamber", "/home/vibecoder/.config/opencode", "/home/vibecoder/.local/share/opencode", "/home/vibecoder/.local/state/opencode", "/home/vibecoder/.local/share/9router", "/home/vibecoder/workspaces"]
 EXPOSE 3000 20128
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:20128/api/health >/dev/null || exit 1
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]
@@ -135,9 +138,17 @@ RUN apk add --no-cache \
         libstdc++ \
         libgcc \
         openssh-client \
-        tini
+        shadow \
+        tini \
+    && if id bun >/dev/null 2>&1; then \
+         usermod -l vibecoder bun; \
+         groupmod -n vibecoder bun 2>/dev/null || true; \
+         usermod -d /home/vibecoder -m vibecoder; \
+       elif ! id vibecoder >/dev/null 2>&1; then \
+         addgroup -g 1000 -S vibecoder; \
+         adduser -u 1000 -S -G vibecoder -h /home/vibecoder -s /bin/bash vibecoder; \
+       fi
 
-# Node LTS binary from packages stage (keeps Node current without apk nodejs)
 COPY --from=packages-alpine /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-alpine /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
@@ -145,30 +156,30 @@ RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
     && node --version
 
-ENV HOME=/home/bun \
+ENV HOME=/home/vibecoder \
     OPENCHAMBER_HOST=0.0.0.0 \
-    OPENCODE_CONFIG_DIR=/home/bun/.config/opencode \
+    OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \
     HOSTNAME=0.0.0.0 \
-    DATA_DIR=/home/bun/.local/share/9router \
+    DATA_DIR=/home/vibecoder/.local/share/9router \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN mkdir -p \
-        /home/bun/.config/openchamber \
-        /home/bun/.config/opencode \
-        /home/bun/.local/share/opencode \
-        /home/bun/.local/state/opencode \
-        /home/bun/.local/share/9router \
-        /home/bun/workspaces \
-    && chown -R bun:bun /home/bun
+        /home/vibecoder/.config/openchamber \
+        /home/vibecoder/.config/opencode \
+        /home/vibecoder/.local/share/opencode \
+        /home/vibecoder/.local/state/opencode \
+        /home/vibecoder/.local/share/9router \
+        /home/vibecoder/workspaces \
+    && chown -R vibecoder:vibecoder /home/vibecoder
 
-COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
 RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
 
-USER bun
-WORKDIR /home/bun/workspaces
+USER vibecoder
+WORKDIR /home/vibecoder/workspaces
 
-VOLUME ["/home/bun/.config/openchamber", "/home/bun/.config/opencode", "/home/bun/.local/share/opencode", "/home/bun/.local/state/opencode", "/home/bun/.local/share/9router", "/home/bun/workspaces"]
+VOLUME ["/home/vibecoder/.config/openchamber", "/home/vibecoder/.config/opencode", "/home/vibecoder/.local/share/opencode", "/home/vibecoder/.local/state/opencode", "/home/vibecoder/.local/share/9router", "/home/vibecoder/workspaces"]
 EXPOSE 3000 20128
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:20128/api/health >/dev/null || exit 1
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]

@@ -2,6 +2,8 @@
 
 One container with **9router** (model gateway), **OpenCode** (AI coding agent), and **OpenChamber** (web UI).
 
+Runs as user **`vibecoder`** (`uid 1000`) with home `/home/vibecoder`.
+
 **Image:** [`ghcr.io/faytranevozter/vibecode-aio`](https://github.com/faytranevozter/vibecode-aio/pkgs/container/vibecode-aio)
 
 | What you get | Port |
@@ -21,12 +23,12 @@ docker run --rm --name vibecode-aio \
   --env-file .env \
   -p 3000:3000 \
   -p 20128:20128 \
-  -v vibecode-openchamber:/home/bun/.config/openchamber \
-  -v vibecode-opencode-config:/home/bun/.config/opencode \
-  -v vibecode-opencode-share:/home/bun/.local/share/opencode \
-  -v vibecode-opencode-state:/home/bun/.local/state/opencode \
-  -v vibecode-9router:/home/bun/.local/share/9router \
-  -v vibecode-workspaces:/home/bun/workspaces \
+  -v vibecode-openchamber:/home/vibecoder/.config/openchamber \
+  -v vibecode-opencode-config:/home/vibecoder/.config/opencode \
+  -v vibecode-opencode-share:/home/vibecoder/.local/share/opencode \
+  -v vibecode-opencode-state:/home/vibecoder/.local/state/opencode \
+  -v vibecode-9router:/home/vibecoder/.local/share/9router \
+  -v vibecode-workspaces:/home/vibecoder/workspaces \
   ghcr.io/faytranevozter/vibecode-aio:latest
 ```
 
@@ -68,12 +70,14 @@ Copy from `.env.example` and change every value before exposing ports beyond loc
 
 ### Data that persists
 
-| Volume | Stores |
+| Container path | Stores |
 | --- | --- |
-| `.../openchamber` | OpenChamber settings |
-| `.../opencode` (config/share/state) | OpenCode config, data, state |
-| `.../9router` | 9router DB / settings |
-| `workspaces` | Projects you work on in the agent |
+| `/home/vibecoder/.config/openchamber` | OpenChamber settings |
+| `/home/vibecoder/.config/opencode` | OpenCode config |
+| `/home/vibecoder/.local/share/opencode` | OpenCode data |
+| `/home/vibecoder/.local/state/opencode` | OpenCode state |
+| `/home/vibecoder/.local/share/9router` | 9router DB / settings |
+| `/home/vibecoder/workspaces` | Projects for the agent |
 
 ---
 
@@ -115,20 +119,58 @@ docker build --target alpine \
 
 ---
 
-## Releases & updates
+## How to bump / release a version
 
-| File | Meaning |
-| --- | --- |
-| `VERSION` | vibecode-aio semver (source of truth) |
-| `package.json` | Same version, for tooling |
-| Dockerfile `ARG`s | Pinned `9router` / `opencode-ai` / `@openchamber/web` |
+Two different “versions” exist:
 
-### Pull published images after a release
+| Kind | Where | Meaning |
+| --- | --- | --- |
+| **vibecode-aio** | `VERSION` (+ `package.json`) | Your image release (`0.1.0` → tag `v0.1.0`) |
+| **Upstream packages** | Dockerfile `ARG`s | Pinned `9router` / `opencode-ai` / `@openchamber/web` |
 
-Git tag `vX.Y.Z` publishes:
+### A) Automatic (upstream packages)
+
+Every **3 hours**, **Watch upstream** checks npm. If anything is newer, it opens a PR that:
+
+1. Updates Dockerfile `ARG`s  
+2. Bumps **patch** in `VERSION` + `package.json`  
+
+You still:
+
+1. Review & merge the PR  
+2. Wait for **CI** green  
+3. Publish (section C)
+
+### B) Manual bump
+
+```bash
+# Upstream package pins only (compare / write Dockerfile ARGs)
+./scripts/check-upstream.sh
+./scripts/check-upstream.sh --write
+
+# vibecode-aio semver only
+./scripts/bump-semver.sh patch   # 0.1.0 → 0.1.1
+./scripts/bump-semver.sh minor   # 0.1.0 → 0.2.0
+./scripts/bump-semver.sh major   # 0.1.0 → 1.0.0
+```
+
+Commit the result, push to `main`, then publish.
+
+### C) Publish to GHCR
+
+Tag **must equal** `VERSION` with a `v` prefix:
+
+```bash
+git checkout main && git pull
+# ensure VERSION is what you want to release
+git tag "v$(tr -d '[:space:]' < VERSION)"
+git push origin "v$(tr -d '[:space:]' < VERSION)"
+```
+
+**Release** builds alpine + debian and pushes:
 
 ```text
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z          # alpine
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z          # alpine (default)
 ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-alpine
 ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-debian
 ghcr.io/faytranevozter/vibecode-aio:alpine
@@ -136,36 +178,15 @@ ghcr.io/faytranevozter/vibecode-aio:debian
 ghcr.io/faytranevozter/vibecode-aio:latest           # alpine
 ```
 
-### Publish a new version (maintainers)
-
-1. Merge CI-green changes (including any upstream-bump PR).
-2. Tag must match `VERSION`:
-
-```bash
-git checkout main && git pull
-git tag "v$(tr -d '[:space:]' < VERSION)"
-git push origin "v$(tr -d '[:space:]' < VERSION)"
-```
-
-3. Check **Actions → Release**, then the repo **Packages** tab.
-
-### Automation
+### Automation overview
 
 | Workflow | When | What |
 | --- | --- | --- |
 | **CI** | PR/push to image-related files | Build alpine + debian (no push) |
 | **Release** | Git tag `v*.*.*` | Push both variants to GHCR |
-| **Watch upstream** | Every 3 hours + manual | If npm has newer 9router / OpenCode / OpenChamber → open a PR (no auto-merge, no auto-tag) |
+| **Watch upstream** | Every 3 hours + manual | Open PR for newer npm packages |
 
-Needs: Actions enabled; Release uses `packages: write`; Watch uses `contents` + `pull-requests` write. No extra secrets for same-repo GHCR.
-
-Local helpers:
-
-```bash
-./scripts/check-upstream.sh          # compare Dockerfile ARGs vs npm
-./scripts/check-upstream.sh --write  # apply newer ARGs
-./scripts/bump-semver.sh patch       # bump VERSION + package.json
-```
+Needs: Actions on; `packages: write` (Release); `contents` + `pull-requests` write (Watch). No extra secrets for same-repo GHCR.
 
 ---
 
