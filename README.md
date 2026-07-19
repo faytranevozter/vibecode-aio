@@ -1,29 +1,24 @@
 # vibecode-aio
 
-Multi-stage Docker images that install and run:
+One container with **9router** (model gateway), **OpenCode** (AI coding agent), and **OpenChamber** (web UI).
 
-| App | Role | Package |
-| --- | --- | --- |
-| [9router](https://github.com/decolua/9router) | AI API gateway / router | `9router` |
-| [OpenCode](https://github.com/anomalyco/opencode) | AI coding agent (managed by OpenChamber) | `opencode-ai` |
-| [OpenChamber](https://github.com/openchamber/openchamber) | Web UI for OpenCode | `@openchamber/web` |
+**Image:** [`ghcr.io/faytranevozter/vibecode-aio`](https://github.com/faytranevozter/vibecode-aio/pkgs/container/vibecode-aio)
 
-## Variants
+| What you get | Port |
+| --- | --- |
+| OpenChamber UI | `3000` |
+| 9router dashboard + OpenAI-compatible API (`/v1`) | `20128` |
 
-| Target | Base | Node | OpenCode binary | Default |
-| --- | --- | --- | --- | --- |
-| `alpine` | `oven/bun` Alpine | Node LTS (from builder) | musl | yes |
-| `debian` | `oven/bun` Debian | Node LTS (from builder) | glibc | no |
+---
 
-## Quick start
+## Run (recommended)
 
 ```bash
 cp .env.example .env
-# edit .env and set strong secrets
+# set strong passwords/secrets in .env
 
-# Alpine (default, smaller)
-docker build -t vibecode-aio:alpine --target alpine .
-docker run --rm --env-file .env \
+docker run --rm --name vibecode-aio \
+  --env-file .env \
   -p 3000:3000 \
   -p 20128:20128 \
   -v vibecode-openchamber:/home/bun/.config/openchamber \
@@ -32,53 +27,80 @@ docker run --rm --env-file .env \
   -v vibecode-opencode-state:/home/bun/.local/state/opencode \
   -v vibecode-9router:/home/bun/.local/share/9router \
   -v vibecode-workspaces:/home/bun/workspaces \
-  vibecode-aio:alpine
+  ghcr.io/faytranevozter/vibecode-aio:latest
 ```
 
-Debian (non-Alpine):
+Then open:
+
+- UI: http://localhost:3000  
+- 9router: http://localhost:20128  
+
+Health: `GET /health` (OpenChamber), `GET /api/health` (9router).
+
+### Which tag should I pull?
+
+| Tag | Use when |
+| --- | --- |
+| `latest` or `alpine` | Everyday use (default, smaller Alpine image) |
+| `debian` | You need glibc instead of musl |
+| `v0.1.0` | Pin a release (same as that release’s alpine) |
+| `v0.1.0-alpine` / `v0.1.0-debian` | Pin a specific variant of a release |
+
+Private package? Log in first:
 
 ```bash
-docker build -t vibecode-aio:debian --target debian .
-docker run --rm --env-file .env \
-  -p 3000:3000 \
-  -p 20128:20128 \
-  -v vibecode-openchamber:/home/bun/.config/openchamber \
-  -v vibecode-opencode-config:/home/bun/.config/opencode \
-  -v vibecode-opencode-share:/home/bun/.local/share/opencode \
-  -v vibecode-opencode-state:/home/bun/.local/state/opencode \
-  -v vibecode-9router:/home/bun/.local/share/9router \
-  -v vibecode-workspaces:/home/bun/workspaces \
-  vibecode-aio:debian
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
 ```
 
-## URLs
+---
 
-| Service | URL |
+## Required config (`.env`)
+
+| Variable | What it’s for |
 | --- | --- |
-| OpenChamber UI | http://localhost:3000 |
-| 9router dashboard / API | http://localhost:20128 |
-| 9router OpenAI-compatible API | http://localhost:20128/v1 |
+| `OPENCHAMBER_UI_PASSWORD` | Password for the web UI |
+| `JWT_SECRET` | 9router JWT signing secret |
+| `INITIAL_PASSWORD` | First 9router dashboard password |
+| `API_KEY_SECRET` | 9router API key hashing |
+| `MACHINE_ID_SALT` | Stable machine id salt for 9router |
 
-Health checks:
+Copy from `.env.example` and change every value before exposing ports beyond localhost.
 
-- OpenChamber: `GET /health`
-- 9router: `GET /api/health`
+### Data that persists
 
-## Configuration
-
-Copy `.env.example` to `.env` and set the required values:
-
-| Variable | Description |
+| Volume | Stores |
 | --- | --- |
-| `OPENCHAMBER_UI_PASSWORD` | Password for the OpenChamber browser UI |
-| `JWT_SECRET` | Secret used by 9router for JWT signing |
-| `INITIAL_PASSWORD` | Initial 9router dashboard password |
-| `API_KEY_SECRET` | Secret used by 9router to hash API keys |
-| `MACHINE_ID_SALT` | Salt used by 9router for stable machine IDs |
+| `.../openchamber` | OpenChamber settings |
+| `.../opencode` (config/share/state) | OpenCode config, data, state |
+| `.../9router` | 9router DB / settings |
+| `workspaces` | Projects you work on in the agent |
 
-Pinned package versions (override at build time):
+---
+
+## Using the three apps together
+
+1. Open **OpenChamber** on port `3000` and sign in with `OPENCHAMBER_UI_PASSWORD`.
+2. Open **9router** on port `20128`, finish setup with `INITIAL_PASSWORD`, add your LLM providers.
+3. In OpenCode / OpenChamber provider settings, point the OpenAI-compatible base URL at:
+
+   `http://127.0.0.1:20128/v1`
+
+   (same container → `127.0.0.1` is correct)
+
+OpenCode is started automatically by OpenChamber.
+
+---
+
+## Build from source
 
 ```bash
+# Alpine (default)
+docker build --target alpine -t vibecode-aio:alpine .
+
+# Debian
+docker build --target debian -t vibecode-aio:debian .
+
+# Pin upstream package versions
 docker build --target alpine \
   --build-arg NINEROUTER_VERSION=0.5.35 \
   --build-arg OPENCODE_VERSION=1.18.3 \
@@ -86,86 +108,38 @@ docker build --target alpine \
   -t vibecode-aio:alpine .
 ```
 
-## Volumes
+| Variant | Base | Notes |
+| --- | --- | --- |
+| `alpine` | Bun Alpine + Node LTS | Default, smaller |
+| `debian` | Bun Debian + Node LTS | glibc OpenCode binary |
 
-| Path | Purpose |
+---
+
+## Releases & updates
+
+| File | Meaning |
 | --- | --- |
-| `/home/bun/.config/openchamber` | OpenChamber config |
-| `/home/bun/.config/opencode` | OpenCode config |
-| `/home/bun/.local/share/opencode` | OpenCode data |
-| `/home/bun/.local/state/opencode` | OpenCode state |
-| `/home/bun/.local/share/9router` | 9router data |
-| `/home/bun/workspaces` | Coding workspaces |
+| `VERSION` | vibecode-aio semver (source of truth) |
+| `package.json` | Same version, for tooling |
+| Dockerfile `ARG`s | Pinned `9router` / `opencode-ai` / `@openchamber/web` |
 
-## Build layout
+### Pull published images after a release
 
-Both targets use multi-stage builds:
-
-1. **packages-*** (`node:lts-alpine` or `node:lts-bookworm-slim`) — install npm packages and compile native addons (`g++` / `make` / `python3` stay only in this stage)
-2. **runtime** (`oven/bun` Alpine or Debian) — copy installed packages into a slim image with Bun and runtime tools only
-
-Default `docker build` target is `alpine` (last stage). Explicit targets:
-
-```bash
-docker build --target alpine -t vibecode-aio:alpine .
-docker build --target debian -t vibecode-aio:debian .
-```
-
-Package install stages use **Node.js LTS** (`node:lts-alpine` / `node:lts-bookworm-slim`).
-
-## Versioning
-
-| File | Role |
-| --- | --- |
-| `VERSION` | **Source of truth** for vibecode-aio semver (e.g. `0.1.0`) |
-| `package.json` | Mirrors `VERSION` for tooling convenience |
-| `Dockerfile` `ARG NINEROUTER_VERSION` / `OPENCODE_VERSION` / `OPENCHAMBER_VERSION` | Pinned upstream npm package versions |
-
-Release git tags must match `VERSION` with a `v` prefix (example: `VERSION=0.1.0` → tag `v0.1.0`).
-
-## GitHub Actions & GHCR
-
-Images publish to:
+Git tag `vX.Y.Z` publishes:
 
 ```text
-ghcr.io/faytranevozter/vibecode-aio
-```
-
-### Workflows
-
-| Workflow | File | Trigger | What it does |
-| --- | --- | --- | --- |
-| **CI** | `.github/workflows/ci.yml` | PR/push changing Dockerfile, entrypoint, VERSION, package.json, workflows, or scripts | Builds `alpine` and `debian` (no push); smoke-checks CLIs |
-| **Release** | `.github/workflows/release.yml` | Push tag `v*.*.*` | Builds both targets and **pushes** to GHCR |
-| **Watch upstream** | `.github/workflows/watch-upstream.yml` | Every 3 hours + `workflow_dispatch` | Compares Dockerfile ARGs to npm latest; opens a **PR** that bumps ARGs + patch semver (no auto-merge, no auto-tag) |
-
-### Image tags (on release `vX.Y.Z`)
-
-| Tag | Meaning |
-| --- | --- |
-| `vX.Y.Z` | Default release tag → **alpine** |
-| `vX.Y.Z-alpine` | Immutable alpine build for that release |
-| `vX.Y.Z-debian` | Immutable debian build for that release |
-| `alpine` | Floating latest alpine |
-| `debian` | Floating latest debian |
-| `latest` | Same as alpine (default variant) |
-
-Examples (for git tag `v0.1.0`):
-
-```text
-ghcr.io/faytranevozter/vibecode-aio:v0.1.0
-ghcr.io/faytranevozter/vibecode-aio:v0.1.0-alpine
-ghcr.io/faytranevozter/vibecode-aio:v0.1.0-debian
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z          # alpine
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-alpine
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-debian
 ghcr.io/faytranevozter/vibecode-aio:alpine
 ghcr.io/faytranevozter/vibecode-aio:debian
-ghcr.io/faytranevozter/vibecode-aio:latest
+ghcr.io/faytranevozter/vibecode-aio:latest           # alpine
 ```
 
-### Publish a release (human steps)
+### Publish a new version (maintainers)
 
-1. Merge any open upstream-bump PR (or edit `VERSION` / Dockerfile ARGs yourself).
-2. Ensure CI is green on `main`.
-3. Tag and push (tag must equal `VERSION`):
+1. Merge CI-green changes (including any upstream-bump PR).
+2. Tag must match `VERSION`:
 
 ```bash
 git checkout main && git pull
@@ -173,35 +147,32 @@ git tag "v$(tr -d '[:space:]' < VERSION)"
 git push origin "v$(tr -d '[:space:]' < VERSION)"
 ```
 
-4. Confirm the **Release** workflow succeeded and images appear under the repo **Packages** tab.
+3. Check **Actions → Release**, then the repo **Packages** tab.
 
-### Required GitHub settings
+### Automation
 
-| Permission / setting | Why |
-| --- | --- |
-| `packages: write` (Release workflow `GITHUB_TOKEN`) | Push to GHCR |
-| `contents: write` + `pull-requests: write` (Watch upstream) | Open dependency bump PRs |
-| Actions enabled | Run workflows |
-| Package visibility | Set GHCR package public/private as needed after first push |
+| Workflow | When | What |
+| --- | --- | --- |
+| **CI** | PR/push to image-related files | Build alpine + debian (no push) |
+| **Release** | Git tag `v*.*.*` | Push both variants to GHCR |
+| **Watch upstream** | Every 3 hours + manual | If npm has newer 9router / OpenCode / OpenChamber → open a PR (no auto-merge, no auto-tag) |
 
-No extra secrets are required for GHCR when using `GITHUB_TOKEN` on the same repository.
+Needs: Actions enabled; Release uses `packages: write`; Watch uses `contents` + `pull-requests` write. No extra secrets for same-repo GHCR.
 
-### Local helpers
+Local helpers:
 
 ```bash
-# Compare Dockerfile ARGs to npm latest
-./scripts/check-upstream.sh
-
-# Write newer ARGs into Dockerfile (used by CI watch job)
-./scripts/check-upstream.sh --write
-
-# Bump patch|minor|major in VERSION + package.json
-./scripts/bump-semver.sh patch
+./scripts/check-upstream.sh          # compare Dockerfile ARGs vs npm
+./scripts/check-upstream.sh --write  # apply newer ARGs
+./scripts/bump-semver.sh patch       # bump VERSION + package.json
 ```
 
-## Notes
+---
 
-- OpenCode is started by OpenChamber automatically.
-- Point OpenCode at 9router (`http://127.0.0.1:20128/v1`) from OpenCode/OpenChamber provider settings when you want model traffic routed through 9router.
-- The image entrypoint starts 9router and OpenChamber together and stops both on container shutdown.
-- Prefer Alpine for smaller images; use Debian if you need glibc compatibility.
+## What’s inside
+
+| App | Role | Upstream |
+| --- | --- | --- |
+| [9router](https://github.com/decolua/9router) | Model routing / OpenAI-compatible proxy | npm `9router` |
+| [OpenCode](https://github.com/anomalyco/opencode) | AI coding agent | npm `opencode-ai` |
+| [OpenChamber](https://github.com/openchamber/openchamber) | Web UI for OpenCode | npm `@openchamber/web` |
