@@ -1,6 +1,6 @@
 # vibecode-aio
 
-One Docker image that installs and runs:
+One Alpine-based Docker image (multi-stage build) that installs and runs:
 
 | App | Role | Package |
 | --- | --- | --- |
@@ -72,6 +72,13 @@ docker build \
 | `/home/bun/.local/state/opencode` | OpenCode state |
 | `/home/bun/.local/share/9router` | 9router data |
 | `/home/bun/workspaces` | Coding workspaces |
+
+## Build layout
+
+Multi-stage Dockerfile:
+
+1. **packages** (`node:22-alpine`) — install npm packages and compile native addons (`g++` / `make` / `python3` stay only in this stage)
+2. **runtime** (`oven/bun:1.3.14-alpine`) — copy installed packages into a slim image with Bun, Node, and runtime tools only
 
 ## Notes
 
