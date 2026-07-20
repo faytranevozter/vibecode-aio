@@ -186,7 +186,20 @@ ghcr.io/faytranevozter/vibecode-aio:latest           # alpine
 | **Release** | Git tag `v*.*.*` | Push both variants to GHCR |
 | **Watch upstream** | Every 3 hours + manual | Open PR for newer npm packages |
 
-Needs: Actions on; `packages: write` (Release); `contents` + `pull-requests` write (Watch). No extra secrets for same-repo GHCR.
+Needs:
+
+- Actions enabled
+- Release: workflow `packages: write`
+- Watch: workflow `contents` + `pull-requests` write
+- **Repo setting (required for Watch PRs):**  
+  **Settings → Actions → General → Workflow permissions**  
+  - “Read and write permissions”  
+  - Enable **“Allow GitHub Actions to create and approve pull requests”**
+
+Without that last checkbox, Watch upstream fails with:  
+`GitHub Actions is not permitted to create or approve pull requests`.
+
+No extra secrets for same-repo GHCR (`GITHUB_TOKEN` is enough).
 
 ---
 
