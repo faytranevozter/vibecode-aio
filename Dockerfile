@@ -2,7 +2,7 @@
 
 ARG NINEROUTER_VERSION=0.5.40
 ARG OPENCODE_VERSION=1.18.4
-ARG OPENCHAMBER_VERSION=1.16.2
+ARG OPENCHAMBER_VERSION=1.16.3
 ARG BUN_VERSION=1.3.14
 
 # -----------------------------------------------------------------------------
