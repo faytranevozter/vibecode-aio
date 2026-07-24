@@ -1,6 +1,6 @@
 {
   "name": "vibecode-aio",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "All-in-one Docker image for 9router, OpenCode, and OpenChamber"
 }
