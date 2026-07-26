@@ -48,6 +48,25 @@ EOF
 
 seed_opencode_config
 
+init_rtk_opencode() {
+  case "${RTK_OPENCODE_INIT:-1}" in
+    0|false|no)
+      return
+      ;;
+  esac
+
+  if ! command -v rtk >/dev/null 2>&1; then
+    echo "warning: rtk not available; skipping OpenCode auto-init" >&2
+    return
+  fi
+
+  if ! rtk init -g --opencode --auto-patch; then
+    echo "warning: rtk OpenCode auto-init failed; continuing startup" >&2
+  fi
+}
+
+init_rtk_opencode
+
 ninerouter_pid=""
 openchamber_pid=""
 

@@ -8,6 +8,7 @@ ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 ARG CONTEXT7_MCP_VERSION=3.2.5
 ARG CHROME_DEVTOOLS_MCP_VERSION=1.6.0
 ARG CODEGRAPH_VERSION=1.5.0
+ARG RTK_VERSION=0.43.0
 
 # -----------------------------------------------------------------------------
 # packages-alpine: install npm packages on Node LTS Alpine (musl)
@@ -93,6 +94,8 @@ RUN apt-get update \
 # -----------------------------------------------------------------------------
 FROM oven/bun:${BUN_VERSION} AS debian
 
+ARG RTK_VERSION
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
@@ -112,7 +115,26 @@ RUN apt-get update \
        elif ! id -u vibecoder >/dev/null 2>&1; then \
          groupadd --gid 1000 vibecoder; \
          useradd --uid 1000 --gid vibecoder --create-home --shell /bin/bash vibecoder; \
-       fi
+        fi
+
+RUN set -eu; \
+    case "$(uname -m)" in \
+      x86_64|amd64) RTK_TARGET=x86_64-unknown-linux-musl ;; \
+      aarch64|arm64) RTK_TARGET=aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported RTK architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    RTK_BASE="https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}"; \
+    mkdir -p /tmp/rtk; \
+    curl -fsSL "${RTK_BASE}/rtk-${RTK_TARGET}.tar.gz" -o /tmp/rtk/rtk.tar.gz; \
+    curl -fsSL "${RTK_BASE}/checksums.txt" -o /tmp/rtk/checksums.txt; \
+    expected="$(awk -v file="rtk-${RTK_TARGET}.tar.gz" '$2 == file { print $1 }' /tmp/rtk/checksums.txt)"; \
+    [ -n "$expected" ]; \
+    actual="$(sha256sum /tmp/rtk/rtk.tar.gz | awk '{ print $1 }')"; \
+    [ "$expected" = "$actual" ]; \
+    tar -xzf /tmp/rtk/rtk.tar.gz -C /tmp/rtk; \
+    install -m 0755 /tmp/rtk/rtk /usr/local/bin/rtk; \
+    rtk --version; \
+    rm -rf /tmp/rtk
 
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-debian /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -132,6 +154,8 @@ RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
 
 ENV HOME=/home/vibecoder \
     CHROME_PATH=/usr/local/bin/vibecode-chromium \
+    RTK_OPENCODE_INIT=1 \
+    RTK_TELEMETRY_DISABLED=1 \
     OPENCHAMBER_HOST=0.0.0.0 \
     OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \
@@ -165,6 +189,8 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]
 # -----------------------------------------------------------------------------
 FROM oven/bun:${BUN_VERSION}-alpine AS alpine
 
+ARG RTK_VERSION
+
 RUN apk add --no-cache \
         bash \
         ca-certificates \
@@ -184,7 +210,26 @@ RUN apk add --no-cache \
        elif ! id vibecoder >/dev/null 2>&1; then \
          addgroup -g 1000 -S vibecoder; \
          adduser -u 1000 -S -G vibecoder -h /home/vibecoder -s /bin/bash vibecoder; \
-       fi
+        fi
+
+RUN set -eu; \
+    case "$(uname -m)" in \
+      x86_64|amd64) RTK_TARGET=x86_64-unknown-linux-musl ;; \
+      aarch64|arm64) echo "RTK skipped: upstream does not publish an Alpine-compatible arm64 build"; exit 0 ;; \
+      *) echo "unsupported RTK architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    RTK_BASE="https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}"; \
+    mkdir -p /tmp/rtk; \
+    curl -fsSL "${RTK_BASE}/rtk-${RTK_TARGET}.tar.gz" -o /tmp/rtk/rtk.tar.gz; \
+    curl -fsSL "${RTK_BASE}/checksums.txt" -o /tmp/rtk/checksums.txt; \
+    expected="$(awk -v file="rtk-${RTK_TARGET}.tar.gz" '$2 == file { print $1 }' /tmp/rtk/checksums.txt)"; \
+    [ -n "$expected" ]; \
+    actual="$(sha256sum /tmp/rtk/rtk.tar.gz | awk '{ print $1 }')"; \
+    [ "$expected" = "$actual" ]; \
+    tar -xzf /tmp/rtk/rtk.tar.gz -C /tmp/rtk; \
+    install -m 0755 /tmp/rtk/rtk /usr/local/bin/rtk; \
+    rtk --version; \
+    rm -rf /tmp/rtk
 
 COPY --from=packages-alpine /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-alpine /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -204,6 +249,8 @@ RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
 
 ENV HOME=/home/vibecoder \
     CHROME_PATH=/usr/local/bin/vibecode-chromium \
+    RTK_OPENCODE_INIT=1 \
+    RTK_TELEMETRY_DISABLED=1 \
     OPENCHAMBER_HOST=0.0.0.0 \
     OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \

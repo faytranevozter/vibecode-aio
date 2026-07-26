@@ -73,3 +73,23 @@ jobs:
         run: |
           docker run --rm --entrypoint sh vibecode-aio:ci-${{ matrix.target }} -c \
             'node --version && opencode --version && openchamber --version && 9router --version'
+
+  rtk-skip-arm64-alpine:
+    name: RTK skip (arm64 alpine)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify RTK is skipped on Alpine arm64
+        run: |
+          docker run --rm \
+            -v "$PWD/Dockerfile:/Dockerfile:ro" \
+            alpine:3 sh -c '
+              set -eu
+              apk add --no-cache curl
+              RTK_VERSION="$(sed -n "s/^ARG RTK_VERSION=//p" /Dockerfile | head -n1)"
+              test -n "$RTK_VERSION"
+              status="$(curl -sSL -o /dev/null -w "%{http_code}" "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-aarch64-unknown-linux-musl.tar.gz")"
+              test "$status" = "404"
+            '
