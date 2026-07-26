@@ -1,0 +1,64 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "playwright-mcp",
+        "--browser",
+        "chromium",
+        "--executable-path",
+        "/usr/local/bin/vibecode-chromium",
+        "--headless",
+        "--no-sandbox"
+      ],
+      "enabled": true,
+      "timeout": 30000
+    },
+    "context7": {
+      "type": "local",
+      "command": [
+        "sh",
+        "-c",
+        "exec context7-mcp --api-key \"$CONTEXT7_API_KEY\""
+      ],
+      "enabled": true,
+      "timeout": 30000
+    },
+    "chrome-devtools": {
+      "type": "local",
+      "command": [
+        "chrome-devtools-mcp",
+        "--headless",
+        "--executable-path",
+        "/usr/local/bin/vibecode-chromium",
+        "--no-usage-statistics"
+      ],
+      "environment": {
+        "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS": "1",
+        "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1"
+      },
+      "enabled": true,
+      "timeout": 30000
+    },
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true,
+      "timeout": 30000
+    }
+  },
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "gh *": "ask"
+    }
+  },
+  "experimental": {
+    "mcp_timeout": 30000
+  }
+}

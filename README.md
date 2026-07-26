@@ -93,6 +93,31 @@ Copy from `.env.example` and change every value before exposing ports beyond loc
 
 OpenCode is started automatically by OpenChamber.
 
+### Built-in agent tools
+
+The image includes:
+
+- GitHub CLI: `gh`
+- Playwright MCP: `playwright-mcp`
+- Context7 MCP: `context7-mcp`
+- Chrome DevTools MCP: `chrome-devtools-mcp`
+- CodeGraph CLI and MCP server: `codegraph`
+- System Chromium for headless browser MCP sessions
+
+On first startup, if `/home/vibecoder/.config/opencode/opencode.json` does not exist, the entrypoint seeds a default OpenCode config that enables `playwright`, `context7`, `chrome-devtools`, and `codegraph` MCP servers. If an OpenCode config already exists, the entrypoint updates only the managed MCP entries (`context7`, `codegraph`) and keeps the rest of the file intact.
+
+To authenticate `gh`, either run `gh auth login` in the container or pass `GH_TOKEN`/`GITHUB_TOKEN` in your environment. The default OpenCode permission config keeps `gh *` at `ask` because it can mutate repositories, issues, pull requests, releases, and auth state.
+
+Context7 MCP reads its API key from `CONTEXT7_API_KEY`. Add it to `.env` or pass it with `docker run -e CONTEXT7_API_KEY=...`; the default OpenCode config passes it to `context7-mcp --api-key` without writing the secret into the config file.
+
+CodeGraph ships as a self-contained CLI. Its MCP server is launched with `codegraph serve --mcp`, and projects need a local `.codegraph/` index to expose tools. Run `codegraph init` inside a project after startup to build that index.
+
+`codegraph init` is per workspace. Each project you want CodeGraph to index must be initialized once before the MCP server becomes active for that workspace.
+
+Troubleshooting: if a workspace does not have a `.codegraph/` index yet, the CodeGraph MCP server stays inactive and exposes no tools until you run `codegraph init`.
+
+After editing `/home/vibecoder/.config/opencode/opencode.json`, restart the container or OpenCode session. OpenCode loads config once at startup.
+
 ---
 
 ## Build from source
@@ -210,3 +235,8 @@ No extra secrets for same-repo GHCR (`GITHUB_TOKEN` is enough).
 | [9router](https://github.com/decolua/9router) | Model routing / OpenAI-compatible proxy | npm `9router` |
 | [OpenCode](https://github.com/anomalyco/opencode) | AI coding agent | npm `opencode-ai` |
 | [OpenChamber](https://github.com/openchamber/openchamber) | Web UI for OpenCode | npm `@openchamber/web` |
+| [GitHub CLI](https://github.com/cli/cli) | GitHub command-line workflows | OS package `gh` / `github-cli` |
+| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | Browser automation MCP server | npm `@playwright/mcp` |
+| [Context7 MCP](https://github.com/upstash/context7) | Documentation context MCP server | npm `@upstash/context7-mcp` |
+| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Chrome debugging/performance MCP server | npm `chrome-devtools-mcp` |
+| [CodeGraph](https://github.com/colbymchenry/codegraph) | Code intelligence CLI and MCP server | npm `@colbymchenry/codegraph` |

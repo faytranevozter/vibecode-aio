@@ -4,6 +4,10 @@ ARG NINEROUTER_VERSION=0.5.40
 ARG OPENCODE_VERSION=1.18.5
 ARG OPENCHAMBER_VERSION=1.16.3
 ARG BUN_VERSION=1.3.14
+ARG PLAYWRIGHT_MCP_VERSION=0.0.78
+ARG CONTEXT7_MCP_VERSION=3.2.5
+ARG CHROME_DEVTOOLS_MCP_VERSION=1.6.0
+ARG CODEGRAPH_VERSION=1.5.0
 
 # -----------------------------------------------------------------------------
 # packages-alpine: install npm packages on Node LTS Alpine (musl)
@@ -13,12 +17,21 @@ FROM node:lts-alpine AS packages-alpine
 ARG NINEROUTER_VERSION
 ARG OPENCODE_VERSION
 ARG OPENCHAMBER_VERSION
+ARG PLAYWRIGHT_MCP_VERSION
+ARG CONTEXT7_MCP_VERSION
+ARG CHROME_DEVTOOLS_MCP_VERSION
+ARG CODEGRAPH_VERSION
 
 RUN apk add --no-cache python3 make g++ git \
-    && npm install -g \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 npm install -g \
         "9router@${NINEROUTER_VERSION}" \
         "opencode-ai@${OPENCODE_VERSION}" \
         "@openchamber/web@${OPENCHAMBER_VERSION}" \
+        "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+        "@upstash/context7-mcp@${CONTEXT7_MCP_VERSION}" \
+        "chrome-devtools-mcp@${CHROME_DEVTOOLS_MCP_VERSION}" \
+        "@colbymchenry/codegraph@${CODEGRAPH_VERSION}" \
+        "pnpm" \
     && npm cache clean --force \
     && rm -rf \
         /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-arm64 \
@@ -43,13 +56,22 @@ FROM node:lts-bookworm-slim AS packages-debian
 ARG NINEROUTER_VERSION
 ARG OPENCODE_VERSION
 ARG OPENCHAMBER_VERSION
+ARG PLAYWRIGHT_MCP_VERSION
+ARG CONTEXT7_MCP_VERSION
+ARG CHROME_DEVTOOLS_MCP_VERSION
+ARG CODEGRAPH_VERSION
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
-    && npm install -g \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 npm install -g \
         "9router@${NINEROUTER_VERSION}" \
         "opencode-ai@${OPENCODE_VERSION}" \
         "@openchamber/web@${OPENCHAMBER_VERSION}" \
+        "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+        "@upstash/context7-mcp@${CONTEXT7_MCP_VERSION}" \
+        "chrome-devtools-mcp@${CHROME_DEVTOOLS_MCP_VERSION}" \
+        "@colbymchenry/codegraph@${CODEGRAPH_VERSION}" \
+        "pnpm" \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/* \
         /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-arm64-musl \
@@ -75,8 +97,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
+        chromium \
         curl \
         git \
+        gh \
         openssh-client \
         tini \
         xz-utils \
@@ -93,11 +117,21 @@ RUN apt-get update \
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-debian /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
+    && ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && ln -sf ../lib/node_modules/pnpm/bin/pnpm.cjs /usr/local/bin/pnpm \
+    && ln -sf ../lib/node_modules/pnpm/bin/pnpx.cjs /usr/local/bin/pnpx \
     && ln -sf ../lib/node_modules/@openchamber/web/bin/cli.js /usr/local/bin/openchamber \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
+    && ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp \
+    && ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp \
+    && ln -sf ../lib/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js /usr/local/bin/chrome-devtools-mcp \
+    && ln -sf ../lib/node_modules/@colbymchenry/codegraph/npm-shim.js /usr/local/bin/codegraph \
+    && ln -sf /usr/bin/chromium /usr/local/bin/vibecode-chromium \
     && node --version
 
 ENV HOME=/home/vibecoder \
+    CHROME_PATH=/usr/local/bin/vibecode-chromium \
     OPENCHAMBER_HOST=0.0.0.0 \
     OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \
@@ -115,6 +149,7 @@ RUN mkdir -p \
     && chown -R vibecoder:vibecoder /home/vibecoder
 
 COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder opencode.default.json /usr/local/share/vibecode/opencode.default.json
 RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
 
 USER vibecoder
@@ -133,8 +168,10 @@ FROM oven/bun:${BUN_VERSION}-alpine AS alpine
 RUN apk add --no-cache \
         bash \
         ca-certificates \
+        chromium \
         curl \
         git \
+        github-cli \
         libstdc++ \
         libgcc \
         openssh-client \
@@ -152,11 +189,21 @@ RUN apk add --no-cache \
 COPY --from=packages-alpine /usr/local/bin/node /usr/local/bin/node
 COPY --from=packages-alpine /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
+    && ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && ln -sf ../lib/node_modules/pnpm/bin/pnpm.cjs /usr/local/bin/pnpm \
+    && ln -sf ../lib/node_modules/pnpm/bin/pnpx.cjs /usr/local/bin/pnpx \
     && ln -sf ../lib/node_modules/@openchamber/web/bin/cli.js /usr/local/bin/openchamber \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
+    && ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp \
+    && ln -sf ../lib/node_modules/@upstash/context7-mcp/dist/index.js /usr/local/bin/context7-mcp \
+    && ln -sf ../lib/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js /usr/local/bin/chrome-devtools-mcp \
+    && ln -sf ../lib/node_modules/@colbymchenry/codegraph/npm-shim.js /usr/local/bin/codegraph \
+    && ln -sf /usr/bin/chromium-browser /usr/local/bin/vibecode-chromium \
     && node --version
 
 ENV HOME=/home/vibecoder \
+    CHROME_PATH=/usr/local/bin/vibecode-chromium \
     OPENCHAMBER_HOST=0.0.0.0 \
     OPENCODE_CONFIG_DIR=/home/vibecoder/.config/opencode \
     PORT=20128 \
@@ -174,6 +221,7 @@ RUN mkdir -p \
     && chown -R vibecoder:vibecoder /home/vibecoder
 
 COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder opencode.default.json /usr/local/share/vibecode/opencode.default.json
 RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
 
 USER vibecoder

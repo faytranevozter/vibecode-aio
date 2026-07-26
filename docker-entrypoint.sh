@@ -5,6 +5,49 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
+mkdir -p "${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"
+
+seed_opencode_config() {
+  config_dir="${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"
+  config_file="$config_dir/opencode.json"
+
+  if [ ! -f "$config_file" ]; then
+    cp /usr/local/share/vibecode/opencode.default.json "$config_file"
+    return
+  fi
+
+  node - "$config_file" <<'EOF'
+const fs = require('fs');
+
+const file = process.argv[2];
+const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+config.$schema = config.$schema || 'https://opencode.ai/config.json';
+config.mcp = config.mcp || {};
+
+config.mcp.context7 = {
+  type: 'local',
+  command: ['sh', '-c', 'exec context7-mcp --api-key "$CONTEXT7_API_KEY"'],
+  enabled: true,
+  timeout: 30000,
+};
+
+config.mcp['codegraph'] = {
+  type: 'local',
+  command: ['codegraph', 'serve', '--mcp'],
+  enabled: true,
+  timeout: 30000,
+};
+
+if (!config.permission) config.permission = {};
+if (!config.permission.bash) config.permission.bash = { '*': 'ask' };
+if (!config.permission.bash['gh *']) config.permission.bash['gh *'] = 'ask';
+
+fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+EOF
+}
+
+seed_opencode_config
+
 ninerouter_pid=""
 openchamber_pid=""
 
