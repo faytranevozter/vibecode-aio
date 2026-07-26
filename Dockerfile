@@ -196,7 +196,6 @@ RUN apk add --no-cache \
         ca-certificates \
         chromium \
         curl \
-        gcompat \
         git \
         github-cli \
         libstdc++ \
@@ -216,7 +215,7 @@ RUN apk add --no-cache \
 RUN set -eu; \
     case "$(uname -m)" in \
       x86_64|amd64) RTK_TARGET=x86_64-unknown-linux-musl ;; \
-      aarch64|arm64) RTK_TARGET=aarch64-unknown-linux-gnu ;; \
+      aarch64|arm64) echo "RTK skipped: upstream does not publish an Alpine-compatible arm64 build"; exit 0 ;; \
       *) echo "unsupported RTK architecture: $(uname -m)" >&2; exit 1 ;; \
     esac; \
     RTK_BASE="https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}"; \

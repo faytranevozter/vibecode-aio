@@ -74,23 +74,22 @@ jobs:
           docker run --rm --entrypoint sh vibecode-aio:ci-${{ matrix.target }} -c \
             'node --version && opencode --version && openchamber --version && 9router --version'
 
-  rtk-smoke-arm64-alpine:
-    name: RTK smoke (arm64 alpine)
+  rtk-skip-arm64-alpine:
+    name: RTK skip (arm64 alpine)
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Read RTK version from Dockerfile
-        id: versions
-        run: |
-          rtk=$(sed -n 's/^ARG RTK_VERSION=//p' Dockerfile | head -n1)
-          echo "rtk=${rtk}" >> "$GITHUB_OUTPUT"
-
-      - name: Run rtk init and rtk gain under gcompat
+      - name: Verify RTK is skipped on Alpine arm64
         run: |
           docker run --rm \
-            -e RTK_VERSION=${{ steps.versions.outputs.rtk }} \
-            -e RTK_TELEMETRY_DISABLED=1 \
-            -v "$PWD/scripts/rtk-smoke.sh:/rtk-smoke.sh:ro" \
-            alpine:3 sh /rtk-smoke.sh
+            -v "$PWD/Dockerfile:/Dockerfile:ro" \
+            alpine:3 sh -c '
+              set -eu
+              apk add --no-cache curl
+              RTK_VERSION="$(sed -n "s/^ARG RTK_VERSION=//p" /Dockerfile | head -n1)"
+              test -n "$RTK_VERSION"
+              status="$(curl -sSL -o /dev/null -w "%{http_code}" "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-aarch64-unknown-linux-musl.tar.gz")"
+              test "$status" = "404"
+            '

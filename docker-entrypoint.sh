@@ -55,6 +55,11 @@ init_rtk_opencode() {
       ;;
   esac
 
+  if ! command -v rtk >/dev/null 2>&1; then
+    echo "warning: rtk not available; skipping OpenCode auto-init" >&2
+    return
+  fi
+
   if ! rtk init -g --opencode --auto-patch; then
     echo "warning: rtk OpenCode auto-init failed; continuing startup" >&2
   fi

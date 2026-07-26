@@ -117,7 +117,9 @@ CodeGraph ships as a self-contained CLI. Its MCP server is launched with `codegr
 
 Troubleshooting: if a workspace does not have a `.codegraph/` index yet, the CodeGraph MCP server stays inactive and exposes no tools until you run `codegraph init`.
 
-RTK is initialized for OpenCode automatically on container startup. Set `RTK_OPENCODE_INIT=0` to disable that behavior. RTK telemetry is disabled by default with `RTK_TELEMETRY_DISABLED=1`.
+RTK is initialized for OpenCode automatically on container startup when the `rtk` binary is available. Set `RTK_OPENCODE_INIT=0` to disable that behavior. RTK telemetry is disabled by default with `RTK_TELEMETRY_DISABLED=1`.
+
+RTK is available in Debian images and Alpine x86_64 images. Alpine arm64 skips RTK because upstream does not publish an Alpine-compatible arm64 binary yet; the entrypoint logs a warning and continues startup.
 
 Verify the correct RTK installation with `rtk --version` and `rtk gain`. RTK is the Rust Token Killer from [rtk-ai/rtk](https://github.com/rtk-ai/rtk); do not install the unrelated npm package named `rtk`.
 
