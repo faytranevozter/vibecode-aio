@@ -6,7 +6,9 @@ set -eu
 
 : "${RTK_VERSION:?RTK_VERSION is required}"
 
-apk add --no-cache ca-certificates curl gcompat
+# Mirror the runtime packages the Dockerfile alpine stage installs for RTK:
+# gcompat (glibc shim for the aarch64 GNU binary) + libgcc/libstdc++ (unwind symbols).
+apk add --no-cache ca-certificates curl gcompat libgcc libstdc++
 
 case "$(uname -m)" in
   x86_64|amd64) RTK_TARGET=x86_64-unknown-linux-musl ;;
