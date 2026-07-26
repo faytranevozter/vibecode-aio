@@ -102,6 +102,7 @@ The image includes:
 - Context7 MCP: `context7-mcp`
 - Chrome DevTools MCP: `chrome-devtools-mcp`
 - CodeGraph CLI and MCP server: `codegraph`
+- RTK command-output optimizer: `rtk`
 - System Chromium for headless browser MCP sessions
 
 On first startup, if `/home/vibecoder/.config/opencode/opencode.json` does not exist, the entrypoint seeds a default OpenCode config that enables `playwright`, `context7`, `chrome-devtools`, and `codegraph` MCP servers. If an OpenCode config already exists, the entrypoint updates only the managed MCP entries (`context7`, `codegraph`) and keeps the rest of the file intact.
@@ -115,6 +116,19 @@ CodeGraph ships as a self-contained CLI. Its MCP server is launched with `codegr
 `codegraph init` is per workspace. Each project you want CodeGraph to index must be initialized once before the MCP server becomes active for that workspace.
 
 Troubleshooting: if a workspace does not have a `.codegraph/` index yet, the CodeGraph MCP server stays inactive and exposes no tools until you run `codegraph init`.
+
+RTK is initialized for OpenCode automatically on container startup. Set `RTK_OPENCODE_INIT=0` to disable that behavior. RTK telemetry is disabled by default with `RTK_TELEMETRY_DISABLED=1`.
+
+Verify the correct RTK installation with `rtk --version` and `rtk gain`. RTK is the Rust Token Killer from [rtk-ai/rtk](https://github.com/rtk-ai/rtk); do not install the unrelated npm package named `rtk`.
+
+RTK can be used explicitly for compact command output, for example:
+
+```bash
+rtk git status
+rtk pnpm list
+rtk vitest
+rtk playwright test
+```
 
 After editing `/home/vibecoder/.config/opencode/opencode.json`, restart the container or OpenCode session. OpenCode loads config once at startup.
 
@@ -240,3 +254,4 @@ No extra secrets for same-repo GHCR (`GITHUB_TOKEN` is enough).
 | [Context7 MCP](https://github.com/upstash/context7) | Documentation context MCP server | npm `@upstash/context7-mcp` |
 | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Chrome debugging/performance MCP server | npm `chrome-devtools-mcp` |
 | [CodeGraph](https://github.com/colbymchenry/codegraph) | Code intelligence CLI and MCP server | npm `@colbymchenry/codegraph` |
+| [RTK](https://github.com/rtk-ai/rtk) | Compact shell output for AI agents | Prebuilt Rust binary `rtk` |
