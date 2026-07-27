@@ -128,13 +128,13 @@ RUN set -eu; \
     rm -rf /tmp/rtk
 
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
-COPY --from=packages-debian /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=packages-debian /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=packages-debian /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
+    && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/npm/bin/npm-cli.js "$@"' > /usr/local/bin/npm \
+    && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/npm/bin/npx-cli.js "$@"' > /usr/local/bin/npx \
     && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs "$@"' > /usr/local/bin/pnpm \
     && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/pnpm/bin/pnpx.cjs "$@"' > /usr/local/bin/pnpx \
-    && chmod 0755 /usr/local/bin/pnpm /usr/local/bin/pnpx \
+    && chmod 0755 /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm /usr/local/bin/pnpx \
     && ln -sf ../lib/node_modules/@openchamber/web/bin/cli.js /usr/local/bin/openchamber \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
     && ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp \

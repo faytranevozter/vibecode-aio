@@ -1,10 +1,6 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -gt 0 ]; then
-  exec "$@"
-fi
-
 HOME_DIR="${HOME:-/home/vibecoder}"
 mkdir -p \
   "${HOME_DIR}/.config/openchamber" \
@@ -168,6 +164,10 @@ activate_nvm_node() {
 }
 
 activate_nvm_node
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
 
 seed_opencode_config() {
   config_dir="${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"
