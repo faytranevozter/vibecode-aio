@@ -174,7 +174,7 @@ ENV HOME=/home/vibecoder \
     DENO_VERSION=${DENO_VERSION} \
     BUN_TOOLCHAIN_VERSION=${BUN_TOOLCHAIN_VERSION} \
     PHP_VERSION=${PHP_VERSION} \
-    PATH=/home/vibecoder/sdk/go/bin:/home/vibecoder/go/bin:/home/vibecoder/.cargo/bin:/home/vibecoder/.deno/bin:/home/vibecoder/.bun/bin:/home/vibecoder/.rbenv/shims:/home/vibecoder/.rbenv/bin:/home/vibecoder/.phpenv/shims:/home/vibecoder/.phpenv/bin:/home/vibecoder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PATH=/home/vibecoder/.nvm/current/bin:/home/vibecoder/sdk/go/bin:/home/vibecoder/go/bin:/home/vibecoder/.cargo/bin:/home/vibecoder/.deno/bin:/home/vibecoder/.bun/bin:/home/vibecoder/.rbenv/shims:/home/vibecoder/.rbenv/bin:/home/vibecoder/.phpenv/shims:/home/vibecoder/.phpenv/bin:/home/vibecoder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN mkdir -p \
         /home/vibecoder/.config/openchamber \

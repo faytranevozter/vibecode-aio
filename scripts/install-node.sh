@@ -38,6 +38,8 @@ resolved="$(node --version)"
 
 nvm alias default "$resolved" >/dev/null
 nvm use --silent default >/dev/null
+rm -f "${NVM_DIR}/current"
+ln -s "${NVM_DIR}/versions/node/${resolved}" "${NVM_DIR}/current"
 
 node --version
 npm --version

@@ -157,6 +157,10 @@ activate_nvm_node() {
   # shellcheck disable=SC1091
   . "${nvm_dir}/nvm.sh"
   if nvm use --silent default >/dev/null 2>&1; then
+    resolved="$(node --version)"
+    rm -f "${nvm_dir}/current"
+    ln -s "${nvm_dir}/versions/node/${resolved}" "${nvm_dir}/current"
+    export PATH="${nvm_dir}/current/bin:${PATH}"
     return 0
   fi
 
