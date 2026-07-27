@@ -3,9 +3,9 @@
 # Usage: install-node [version]
 # Env:   NODE_VERSION (default: --lts), NVM_VERSION, NVM_DIR, HOME
 
-set -eu
+set -e
 
-NODE_VERSION="${1:-${NODE_VERSION:---lts}}"
+REQUESTED_NODE_VERSION="${1:-${NODE_VERSION:---lts}}"
 NVM_VERSION="${NVM_VERSION:-0.40.6}"
 HOME_DIR="${HOME:-/home/vibecoder}"
 NVM_DIR="${NVM_DIR:-${HOME_DIR}/.nvm}"
@@ -15,22 +15,22 @@ mkdir -p "$NVM_DIR"
 
 if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
   echo "Installing nvm ${NVM_VERSION} into ${NVM_DIR}"
-  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | PROFILE=/dev/null bash
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | env -u NODE_VERSION PROFILE=/dev/null NVM_DIR="$NVM_DIR" bash
 fi
 
 # shellcheck disable=SC1091
 . "${NVM_DIR}/nvm.sh"
 
-case "$NODE_VERSION" in
+case "$REQUESTED_NODE_VERSION" in
   lts|lts/*)
     install_spec="--lts"
     ;;
   *)
-    install_spec="$NODE_VERSION"
+    install_spec="$REQUESTED_NODE_VERSION"
     ;;
 esac
 
-echo "Installing Node.js ${NODE_VERSION} with nvm"
+echo "Installing Node.js ${REQUESTED_NODE_VERSION} with nvm"
 nvm install "$install_spec"
 nvm use --silent "$install_spec" >/dev/null
 
