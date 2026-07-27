@@ -124,7 +124,7 @@ RUN set -eu; \
     [ "$expected" = "$actual" ]; \
     tar -xzf /tmp/rtk/rtk.tar.gz -C /tmp/rtk; \
     install -m 0755 /tmp/rtk/rtk /usr/local/bin/rtk; \
-    rtk --version; \
+    if [ "$RTK_TARGET" = "x86_64-unknown-linux-musl" ]; then rtk --version; fi; \
     rm -rf /tmp/rtk
 
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
