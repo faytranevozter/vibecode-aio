@@ -13,6 +13,7 @@ mkdir -p \
   "${HOME_DIR}/.local/state/opencode" \
   "${HOME_DIR}/.local/share/9router" \
   "${HOME_DIR}/.local/bin" \
+  "${HOME_DIR}/.nvm" \
   "${HOME_DIR}/.deno" \
   "${HOME_DIR}/.bun" \
   "${HOME_DIR}/.phpenv" \
@@ -27,10 +28,13 @@ env_truthy() {
   esac
 }
 
-# Comma/space-separated list, e.g. INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php
+# Comma/space-separated list, e.g. INSTALL_TOOLCHAINS=node,go,rust,python,ruby,deno,bun,php
 # Legacy INSTALL_GO=1 / INSTALL_RUST=1 etc. still append to the list.
 toolchain_list() {
   list="${INSTALL_TOOLCHAINS:-}"
+  if env_truthy "${INSTALL_NODE:-0}"; then
+    list="${list:+$list,}node"
+  fi
   if env_truthy "${INSTALL_GO:-0}"; then
     list="${list:+$list,}go"
   fi
@@ -60,6 +64,14 @@ run_toolchain_install() {
   status=0
   case "$name" in
     ''|skip|none|false|0) return 0 ;;
+    node|nodejs|nvm)
+      echo "toolchain: ensuring Node.js ${NODE_VERSION:-default} with nvm under \$HOME"
+      if [ -n "${NODE_VERSION:-}" ]; then
+        install-node "$NODE_VERSION" || status=$?
+      else
+        install-node || status=$?
+      fi
+      ;;
     go|golang)
       echo "toolchain: ensuring Go ${GO_VERSION:-default} under \$HOME"
       if [ -n "${GO_VERSION:-}" ]; then
@@ -117,7 +129,7 @@ run_toolchain_install() {
       fi
       ;;
     *)
-      echo "warning: unknown toolchain '${name}' (supported: go, rust, python, ruby, deno, bun, php)" >&2
+      echo "warning: unknown toolchain '${name}' (supported: node, go, rust, python, ruby, deno, bun, php)" >&2
       return 0
       ;;
   esac
@@ -139,6 +151,23 @@ bootstrap_toolchains() {
 }
 
 bootstrap_toolchains
+
+activate_nvm_node() {
+  nvm_dir="${NVM_DIR:-${HOME_DIR}/.nvm}"
+  if [ ! -s "${nvm_dir}/nvm.sh" ]; then
+    return 0
+  fi
+
+  # shellcheck disable=SC1091
+  . "${nvm_dir}/nvm.sh"
+  if nvm use --silent default >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "warning: nvm is installed but no default Node.js version is active; using image fallback" >&2
+}
+
+activate_nvm_node
 
 seed_opencode_config() {
   config_dir="${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"

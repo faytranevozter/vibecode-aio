@@ -34,7 +34,7 @@ Then open:
 
 Health: `GET /health` (OpenChamber), `GET /api/health` (9router).
 
-The whole home directory is a single named volume so app config, workspaces, shell history, SSH keys, and user-installed toolchains (Go, Rust, etc.) all persist across container recreate.
+The whole home directory is a single named volume so app config, workspaces, shell history, SSH keys, and user-installed toolchains (Node.js via nvm, Go, Rust, etc.) all persist across container recreate.
 
 ### Which tag should I pull?
 
@@ -81,6 +81,7 @@ That includes:
 | `.local/state/opencode` | OpenCode state |
 | `.local/share/9router` | 9router DB / settings |
 | `workspaces` | Projects for the agent |
+| `.nvm` | Default nvm-managed Node.js LTS |
 | `sdk/go`, `go` | Optional Go toolchain / GOPATH |
 | `.cargo`, `.rustup` | Optional Rust toolchain |
 | `.deno`, `.bun` | Optional Deno / user-space Bun toolchains |
@@ -137,7 +138,9 @@ Toolchains are **not** baked into image layers. They install into `$HOME` (`vibe
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `INSTALL_TOOLCHAINS` | _(empty)_ | Comma-separated list: `go`, `rust`, `python`, `ruby`, `deno`, `bun`, `php` |
+| `INSTALL_TOOLCHAINS` | `node` | Comma-separated list: `node`, `go`, `rust`, `python`, `ruby`, `deno`, `bun`, `php` |
+| `NODE_VERSION` | `--lts` | nvm Node.js pin (`--lts`, `22`, `22.13.1`, etc.) |
+| `NVM_VERSION` | `0.40.6` | nvm installer version |
 | `GO_VERSION` | `1.26.5` | Go pin |
 | `RUST_VERSION` | `stable` | rustup toolchain |
 | `PYTHON_VERSION` | `3.15` | uv-managed Python |
@@ -146,14 +149,17 @@ Toolchains are **not** baked into image layers. They install into `$HOME` (`vibe
 | `BUN_TOOLCHAIN_VERSION` | `1.3.14` | user-space Bun pin |
 | `PHP_VERSION` | `8.5.8` | phpenv PHP pin |
 
-Aliases: `golang`→go, `cargo`/`rustup`→rust, `py`/`uv`→python, `rb`/`rbenv`→ruby, `composer`→php.  
-Legacy `INSTALL_GO=1` / `INSTALL_RUST=1` / `INSTALL_PYTHON=1` / etc. still work and are merged into the list.
+Aliases: `nodejs`/`nvm`→node, `golang`→go, `cargo`/`rustup`→rust, `py`/`uv`→python, `rb`/`rbenv`→ruby, `composer`→php.  
+Legacy `INSTALL_NODE=1` / `INSTALL_GO=1` / `INSTALL_RUST=1` / `INSTALL_PYTHON=1` / etc. still work and are merged into the list.
+
+The image uses a pure Debian base. Node.js is managed by nvm by default and installs latest LTS into `~/.nvm` on first startup. A minimal baked Node fallback exists only so the image can still start if nvm install cannot run yet.
 
 **Bake default list at build** (install still runs on first start into home — needs network once):
 
 ```bash
 docker build --target debian \
-  --build-arg INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php \
+  --build-arg INSTALL_TOOLCHAINS=node,go,rust,python,ruby,deno,bun,php \
+  --build-arg NODE_VERSION=22 \
   --build-arg GO_VERSION=1.26.5 \
   --build-arg PYTHON_VERSION=3.15 \
   -t vibecode-aio:debian .
@@ -164,7 +170,8 @@ docker build --target debian \
 ```bash
 docker run -d --name vibecode-aio \
   --env-file .env \
-  -e INSTALL_TOOLCHAINS=go,rust,python,deno,bun \
+  -e INSTALL_TOOLCHAINS=node,go,rust,python,deno,bun \
+  -e NODE_VERSION=--lts \
   -e GO_VERSION=1.26.5 \
   -p 3000:3000 -p 20128:20128 \
   -v vibecode-home:/home/vibecoder \
@@ -176,6 +183,8 @@ Or set `INSTALL_TOOLCHAINS=...` in `.env`. Installs are **idempotent**; failures
 #### Manual install (any time)
 
 ```bash
+docker exec -u vibecoder -it vibecode-aio install-node     # nvm + latest Node.js LTS
+docker exec -u vibecoder -it vibecode-aio install-node 22
 docker exec -u vibecoder -it vibecode-aio install-go
 docker exec -u vibecoder -it vibecode-aio install-rust
 docker exec -u vibecoder -it vibecode-aio install-python   # uv + Python
@@ -187,12 +196,13 @@ docker exec -u vibecoder -it vibecode-aio install-php      # phpenv + PHP
 
 | Name | How | Home paths | Notes |
 | --- | --- | --- | --- |
+| `node` | nvm | `~/.nvm` | Default; latest LTS unless pinned |
 | `go` | official tarball | `~/sdk/go`, `~/go` | Fast binary install |
 | `rust` | rustup | `~/.cargo`, `~/.rustup` | Fast binary install |
 | `python` | [uv](https://github.com/astral-sh/uv) | `~/.local`, uv cache | Fast; good default Python |
 | `ruby` | rbenv + ruby-build | `~/.rbenv` | **Compiles** from source — needs build deps |
 | `deno` | official installer | `~/.deno` | Fast binary install |
-| `bun` | official installer | `~/.bun` | Fast binary install; image already includes Bun too |
+| `bun` | official installer | `~/.bun` | Fast binary install |
 | `php` | phpenv + php-build | `~/.phpenv` | **Compiles** from source — needs build deps |
 
 Ruby, PHP, and native gems/crates may need OS packages once (ephemeral to the image layer):
@@ -206,7 +216,7 @@ Ruby, PHP, and native gems/crates may need OS packages once (ephemeral to the im
 
 #### Already in the image (no install needed)
 
-Node, npm, pnpm, Bun, `gh`, Chromium, and the agent stack ship in the image. The `bun` toolchain option installs a second user-space Bun under `~/.bun` only when you explicitly ask for it.
+Node, npm, and pnpm are available through nvm-managed latest LTS by default after first startup. The image also includes a baked Node fallback for startup resilience, and `pnpm`/`pnpx` use wrappers so they execute through the active `node` instead of depending on package executable bits. `gh`, Chromium, and the agent stack ship in the image. The `bun` toolchain option installs Bun under `~/.bun` only when you explicitly ask for it.
 
 #### Suggested extras (DIY under `$HOME`)
 
@@ -293,13 +303,13 @@ docker build --target debian \
 
 # Default auto-install toolchains into home volume on container start
 docker build --target debian \
-  --build-arg INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php \
+  --build-arg INSTALL_TOOLCHAINS=node,go,rust,python,ruby,deno,bun,php \
   -t vibecode-aio:debian .
 ```
 
 | Variant | Base | Notes |
 | --- | --- | --- |
-| `debian` | Bun Debian + Node LTS | glibc image; better for language toolchains |
+| `debian` | Debian bookworm slim + nvm Node LTS | glibc image; only supported variant |
 
 ---
 

@@ -3,16 +3,17 @@
 ARG NINEROUTER_VERSION=0.5.40
 ARG OPENCODE_VERSION=1.18.7
 ARG OPENCHAMBER_VERSION=1.16.3
-ARG BUN_VERSION=1.3.14
 ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 ARG CONTEXT7_MCP_VERSION=3.2.5
 ARG CHROME_DEVTOOLS_MCP_VERSION=1.6.0
 ARG CODEGRAPH_VERSION=1.5.0
 ARG RTK_VERSION=0.43.0
+ARG NVM_VERSION=0.40.6
+ARG NODE_VERSION=--lts
 # Optional toolchains: comma-separated names baked as image default (override with -e).
-# Example: INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php
+# Example: INSTALL_TOOLCHAINS=node,go,rust,python,ruby,deno,bun,php
 # Entrypoint installs into $HOME on startup if missing (needs network once).
-ARG INSTALL_TOOLCHAINS=
+ARG INSTALL_TOOLCHAINS=node
 ARG GO_VERSION=1.26.5
 ARG RUST_VERSION=stable
 ARG PYTHON_VERSION=3.15
@@ -22,9 +23,9 @@ ARG BUN_TOOLCHAIN_VERSION=1.3.14
 ARG PHP_VERSION=8.5.8
 
 # -----------------------------------------------------------------------------
-# packages-debian: install npm packages on Node LTS Debian (glibc)
+# packages-debian: install npm packages on Debian with nvm Node LTS
 # -----------------------------------------------------------------------------
-FROM node:lts-bookworm-slim AS packages-debian
+FROM debian:bookworm-slim AS packages-debian
 
 ARG NINEROUTER_VERSION
 ARG OPENCODE_VERSION
@@ -33,10 +34,21 @@ ARG PLAYWRIGHT_MCP_VERSION
 ARG CONTEXT7_MCP_VERSION
 ARG CHROME_DEVTOOLS_MCP_VERSION
 ARG CODEGRAPH_VERSION
+ARG NVM_VERSION
+ARG NODE_VERSION
+
+ENV HOME=/root \
+    NVM_DIR=/root/.nvm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
-    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 npm install -g \
+    && apt-get install -y --no-install-recommends bash curl python3 make g++ git ca-certificates \
+    && curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | PROFILE=/dev/null bash \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install "$NODE_VERSION" \
+    && nvm use --silent "$NODE_VERSION" \
+    && nvm alias default "$(node --version)" \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 npm --prefix /usr/local install -g \
+        "npm@latest" \
         "9router@${NINEROUTER_VERSION}" \
         "opencode-ai@${OPENCODE_VERSION}" \
         "@openchamber/web@${OPENCHAMBER_VERSION}" \
@@ -45,6 +57,7 @@ RUN apt-get update \
         "chrome-devtools-mcp@${CHROME_DEVTOOLS_MCP_VERSION}" \
         "@colbymchenry/codegraph@${CODEGRAPH_VERSION}" \
         "pnpm" \
+    && cp "$(command -v node)" /usr/local/bin/node \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/* \
         /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-arm64-musl \
@@ -64,10 +77,12 @@ RUN apt-get update \
 # -----------------------------------------------------------------------------
 # debian: glibc runtime
 # -----------------------------------------------------------------------------
-FROM oven/bun:${BUN_VERSION} AS debian
+FROM debian:bookworm-slim AS debian
 
 ARG RTK_VERSION
-ARG INSTALL_TOOLCHAINS=
+ARG INSTALL_TOOLCHAINS=node
+ARG NVM_VERSION=0.40.6
+ARG NODE_VERSION=--lts
 ARG GO_VERSION=1.26.5
 ARG RUST_VERSION=stable
 ARG PYTHON_VERSION=3.15
@@ -88,11 +103,7 @@ RUN apt-get update \
         tini \
         xz-utils \
     && rm -rf /var/lib/apt/lists/* \
-    && if id -u bun >/dev/null 2>&1; then \
-         usermod -l vibecoder bun; \
-         groupmod -n vibecoder bun 2>/dev/null || true; \
-         usermod -d /home/vibecoder -m vibecoder; \
-       elif ! id -u vibecoder >/dev/null 2>&1; then \
+    && if ! id -u vibecoder >/dev/null 2>&1; then \
          groupadd --gid 1000 vibecoder; \
          useradd --uid 1000 --gid vibecoder --create-home --shell /bin/bash vibecoder; \
         fi
@@ -117,12 +128,13 @@ RUN set -eu; \
     rm -rf /tmp/rtk
 
 COPY --from=packages-debian /usr/local/bin/node /usr/local/bin/node
+COPY --from=packages-debian /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=packages-debian /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=packages-debian /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/9router/cli.js /usr/local/bin/9router \
-    && ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
-    && ln -sf ../lib/node_modules/pnpm/bin/pnpm.cjs /usr/local/bin/pnpm \
-    && ln -sf ../lib/node_modules/pnpm/bin/pnpx.cjs /usr/local/bin/pnpx \
+    && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs "$@"' > /usr/local/bin/pnpm \
+    && printf '%s\n' '#!/usr/bin/env sh' 'exec node /usr/local/lib/node_modules/pnpm/bin/pnpx.cjs "$@"' > /usr/local/bin/pnpx \
+    && chmod 0755 /usr/local/bin/pnpm /usr/local/bin/pnpx \
     && ln -sf ../lib/node_modules/@openchamber/web/bin/cli.js /usr/local/bin/openchamber \
     && ln -sf ../lib/node_modules/opencode-ai/bin/opencode /usr/local/bin/opencode \
     && ln -sf ../lib/node_modules/@playwright/mcp/cli.js /usr/local/bin/playwright-mcp \
@@ -150,8 +162,11 @@ ENV HOME=/home/vibecoder \
     PHPENV_ROOT=/home/vibecoder/.phpenv \
     DENO_INSTALL=/home/vibecoder/.deno \
     BUN_INSTALL=/home/vibecoder/.bun \
+    NVM_DIR=/home/vibecoder/.nvm \
     UV_INSTALL_DIR=/home/vibecoder/.local \
     INSTALL_TOOLCHAINS=${INSTALL_TOOLCHAINS} \
+    NVM_VERSION=${NVM_VERSION} \
+    NODE_VERSION=${NODE_VERSION} \
     GO_VERSION=${GO_VERSION} \
     RUST_VERSION=${RUST_VERSION} \
     PYTHON_VERSION=${PYTHON_VERSION} \
@@ -168,6 +183,7 @@ RUN mkdir -p \
         /home/vibecoder/.local/state/opencode \
         /home/vibecoder/.local/share/9router \
         /home/vibecoder/.local/bin \
+        /home/vibecoder/.nvm \
         /home/vibecoder/workspaces \
         /home/vibecoder/sdk \
         /home/vibecoder/go \
@@ -175,8 +191,9 @@ RUN mkdir -p \
 
 COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
 COPY --chown=vibecoder:vibecoder opencode.default.json /usr/local/share/vibecode/opencode.default.json
-COPY --chown=vibecoder:vibecoder scripts/install-go.sh scripts/install-rust.sh scripts/install-python.sh scripts/install-ruby.sh scripts/install-deno.sh scripts/install-bun.sh scripts/install-php.sh /usr/local/share/vibecode/
+COPY --chown=vibecoder:vibecoder scripts/install-node.sh scripts/install-go.sh scripts/install-rust.sh scripts/install-python.sh scripts/install-ruby.sh scripts/install-deno.sh scripts/install-bun.sh scripts/install-php.sh /usr/local/share/vibecode/
 RUN chmod 0755 /usr/local/bin/vibecode-entrypoint \
+        /usr/local/share/vibecode/install-node.sh \
         /usr/local/share/vibecode/install-go.sh \
         /usr/local/share/vibecode/install-rust.sh \
         /usr/local/share/vibecode/install-python.sh \
@@ -184,6 +201,7 @@ RUN chmod 0755 /usr/local/bin/vibecode-entrypoint \
         /usr/local/share/vibecode/install-deno.sh \
         /usr/local/share/vibecode/install-bun.sh \
         /usr/local/share/vibecode/install-php.sh \
+    && ln -sf /usr/local/share/vibecode/install-node.sh /usr/local/bin/install-node \
     && ln -sf /usr/local/share/vibecode/install-go.sh /usr/local/bin/install-go \
     && ln -sf /usr/local/share/vibecode/install-rust.sh /usr/local/bin/install-rust \
     && ln -sf /usr/local/share/vibecode/install-python.sh /usr/local/bin/install-python \
