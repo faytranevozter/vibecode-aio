@@ -5,7 +5,140 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
-mkdir -p "${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"
+HOME_DIR="${HOME:-/home/vibecoder}"
+mkdir -p \
+  "${HOME_DIR}/.config/openchamber" \
+  "${OPENCODE_CONFIG_DIR:-${HOME_DIR}/.config/opencode}" \
+  "${HOME_DIR}/.local/share/opencode" \
+  "${HOME_DIR}/.local/state/opencode" \
+  "${HOME_DIR}/.local/share/9router" \
+  "${HOME_DIR}/.local/bin" \
+  "${HOME_DIR}/.deno" \
+  "${HOME_DIR}/.bun" \
+  "${HOME_DIR}/.phpenv" \
+  "${HOME_DIR}/workspaces" \
+  "${HOME_DIR}/sdk" \
+  "${HOME_DIR}/go"
+
+env_truthy() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Comma/space-separated list, e.g. INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php
+# Legacy INSTALL_GO=1 / INSTALL_RUST=1 etc. still append to the list.
+toolchain_list() {
+  list="${INSTALL_TOOLCHAINS:-}"
+  if env_truthy "${INSTALL_GO:-0}"; then
+    list="${list:+$list,}go"
+  fi
+  if env_truthy "${INSTALL_RUST:-0}"; then
+    list="${list:+$list,}rust"
+  fi
+  if env_truthy "${INSTALL_PYTHON:-0}"; then
+    list="${list:+$list,}python"
+  fi
+  if env_truthy "${INSTALL_RUBY:-0}"; then
+    list="${list:+$list,}ruby"
+  fi
+  if env_truthy "${INSTALL_DENO:-0}"; then
+    list="${list:+$list,}deno"
+  fi
+  if env_truthy "${INSTALL_BUN:-0}"; then
+    list="${list:+$list,}bun"
+  fi
+  if env_truthy "${INSTALL_PHP:-0}"; then
+    list="${list:+$list,}php"
+  fi
+  printf '%s' "$list" | tr '[:upper:]' '[:lower:]' | tr ',;' '  '
+}
+
+run_toolchain_install() {
+  name="$1"
+  status=0
+  case "$name" in
+    ''|skip|none|false|0) return 0 ;;
+    go|golang)
+      echo "toolchain: ensuring Go ${GO_VERSION:-default} under \$HOME"
+      if [ -n "${GO_VERSION:-}" ]; then
+        install-go "$GO_VERSION" || status=$?
+      else
+        install-go || status=$?
+      fi
+      ;;
+    rust|rustup|cargo)
+      echo "toolchain: ensuring Rust ${RUST_VERSION:-stable} under \$HOME"
+      if [ -n "${RUST_VERSION:-}" ]; then
+        install-rust "$RUST_VERSION" || status=$?
+      else
+        install-rust || status=$?
+      fi
+      ;;
+    python|py|uv)
+      echo "toolchain: ensuring Python ${PYTHON_VERSION:-default} under \$HOME"
+      if [ -n "${PYTHON_VERSION:-}" ]; then
+        install-python "$PYTHON_VERSION" || status=$?
+      else
+        install-python || status=$?
+      fi
+      ;;
+    ruby|rb|rbenv)
+      echo "toolchain: ensuring Ruby ${RUBY_VERSION:-default} under \$HOME"
+      if [ -n "${RUBY_VERSION:-}" ]; then
+        install-ruby "$RUBY_VERSION" || status=$?
+      else
+        install-ruby || status=$?
+      fi
+      ;;
+    deno)
+      echo "toolchain: ensuring Deno ${DENO_VERSION:-default} under \$HOME"
+      if [ -n "${DENO_VERSION:-}" ]; then
+        install-deno "$DENO_VERSION" || status=$?
+      else
+        install-deno || status=$?
+      fi
+      ;;
+    bun)
+      echo "toolchain: ensuring Bun ${BUN_TOOLCHAIN_VERSION:-default} under \$HOME"
+      if [ -n "${BUN_TOOLCHAIN_VERSION:-}" ]; then
+        install-bun "$BUN_TOOLCHAIN_VERSION" || status=$?
+      else
+        install-bun || status=$?
+      fi
+      ;;
+    php|composer)
+      echo "toolchain: ensuring PHP ${PHP_VERSION:-default} under \$HOME"
+      if [ -n "${PHP_VERSION:-}" ]; then
+        install-php "$PHP_VERSION" || status=$?
+      else
+        install-php || status=$?
+      fi
+      ;;
+    *)
+      echo "warning: unknown toolchain '${name}' (supported: go, rust, python, ruby, deno, bun, php)" >&2
+      return 0
+      ;;
+  esac
+  if [ "$status" -ne 0 ]; then
+    echo "warning: install for '${name}' failed; continuing startup" >&2
+  fi
+  return 0
+}
+
+bootstrap_toolchains() {
+  tools="$(toolchain_list)"
+  if [ -z "$(printf '%s' "$tools" | tr -d '[:space:]')" ]; then
+    return 0
+  fi
+  echo "INSTALL_TOOLCHAINS active: ${tools}"
+  for name in $tools; do
+    run_toolchain_install "$name"
+  done
+}
+
+bootstrap_toolchains
 
 seed_opencode_config() {
   config_dir="${OPENCODE_CONFIG_DIR:-/home/vibecoder/.config/opencode}"

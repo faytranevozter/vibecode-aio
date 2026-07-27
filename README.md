@@ -23,13 +23,8 @@ docker run --rm --name vibecode-aio \
   --env-file .env \
   -p 3000:3000 \
   -p 20128:20128 \
-  -v vibecode-openchamber:/home/vibecoder/.config/openchamber \
-  -v vibecode-opencode-config:/home/vibecoder/.config/opencode \
-  -v vibecode-opencode-share:/home/vibecoder/.local/share/opencode \
-  -v vibecode-opencode-state:/home/vibecoder/.local/state/opencode \
-  -v vibecode-9router:/home/vibecoder/.local/share/9router \
-  -v vibecode-workspaces:/home/vibecoder/workspaces \
-  ghcr.io/faytranevozter/vibecode-aio:latest
+  -v vibecode-home:/home/vibecoder \
+  ghcr.io/faytranevozter/vibecode-aio:debian
 ```
 
 Then open:
@@ -39,14 +34,14 @@ Then open:
 
 Health: `GET /health` (OpenChamber), `GET /api/health` (9router).
 
+The whole home directory is a single named volume so app config, workspaces, shell history, SSH keys, and user-installed toolchains (Go, Rust, etc.) all persist across container recreate.
+
 ### Which tag should I pull?
 
 | Tag | Use when |
 | --- | --- |
-| `latest` or `alpine` | Everyday use (default, smaller Alpine image) |
-| `debian` | You need glibc instead of musl |
-| `v0.1.1` | Pin a release (same as that release’s alpine) |
-| `v0.1.1-alpine` / `v0.1.1-debian` | Pin a specific variant of a release |
+| `latest` or `debian` | Current Debian/glibc image |
+| `v0.1.1` | Pin a release |
 
 Private package? Log in first:
 
@@ -70,14 +65,162 @@ Copy from `.env.example` and change every value before exposing ports beyond loc
 
 ### Data that persists
 
-| Container path | Stores |
+Mount one volume on the full home directory:
+
+| Host volume (example) | Container path | Stores |
+| --- | --- | --- |
+| `vibecode-home` | `/home/vibecoder` | Everything under home |
+
+That includes:
+
+| Path under home | Stores |
 | --- | --- |
-| `/home/vibecoder/.config/openchamber` | OpenChamber settings |
-| `/home/vibecoder/.config/opencode` | OpenCode config |
-| `/home/vibecoder/.local/share/opencode` | OpenCode data |
-| `/home/vibecoder/.local/state/opencode` | OpenCode state |
-| `/home/vibecoder/.local/share/9router` | 9router DB / settings |
-| `/home/vibecoder/workspaces` | Projects for the agent |
+| `.config/openchamber` | OpenChamber settings |
+| `.config/opencode` | OpenCode config |
+| `.local/share/opencode` | OpenCode data |
+| `.local/state/opencode` | OpenCode state |
+| `.local/share/9router` | 9router DB / settings |
+| `workspaces` | Projects for the agent |
+| `sdk/go`, `go` | Optional Go toolchain / GOPATH |
+| `.cargo`, `.rustup` | Optional Rust toolchain |
+| `.deno`, `.bun` | Optional Deno / user-space Bun toolchains |
+| `.rbenv`, `.phpenv` | Optional Ruby / PHP toolchains |
+| `.local/bin` | Optional user binaries |
+| `.ssh`, shell rc, caches | User secrets and preferences |
+
+On first boot with an empty home volume, the entrypoint creates the app layout dirs. Install toolchains into `$HOME` (not `/usr/local`) so they survive image upgrades.
+
+### Migrate from six subpath volumes
+
+Older docs used six named volumes. Docker cannot add mounts to a running container — stop, merge into `vibecode-home`, recreate.
+
+```bash
+CONTAINER=vibecode-aio
+docker stop "$CONTAINER"
+docker rename "$CONTAINER" "${CONTAINER}-old"
+docker volume create vibecode-home
+
+copy_vol() {
+  src_vol="$1"; dest_sub="$2"
+  docker run --rm \
+    -v "${src_vol}:/from:ro" \
+    -v vibecode-home:/to \
+    debian:bookworm-slim sh -c "mkdir -p \"/to/${dest_sub}\" && cp -a /from/. \"/to/${dest_sub}/\" && chown -R 1000:1000 \"/to/${dest_sub}\""
+}
+
+copy_vol vibecode-openchamber      .config/openchamber
+copy_vol vibecode-opencode-config  .config/opencode
+copy_vol vibecode-opencode-share   .local/share/opencode
+copy_vol vibecode-opencode-state   .local/state/opencode
+copy_vol vibecode-9router          .local/share/9router
+copy_vol vibecode-workspaces       workspaces
+
+docker run -d --name vibecode-aio \
+  --env-file .env \
+  -p 3000:3000 \
+  -p 20128:20128 \
+  -v vibecode-home:/home/vibecoder \
+  ghcr.io/faytranevozter/vibecode-aio:debian
+
+# after verifying health and data:
+# docker rm vibecode-aio-old
+# docker volume rm vibecode-openchamber vibecode-opencode-config \
+#   vibecode-opencode-share vibecode-opencode-state \
+#   vibecode-9router vibecode-workspaces
+```
+
+### Optional toolchains (`INSTALL_TOOLCHAINS`)
+
+Toolchains are **not** baked into image layers. They install into `$HOME` (`vibecode-home`) so they survive recreate. Prefer the **debian** tag.
+
+#### One env for many tools
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `INSTALL_TOOLCHAINS` | _(empty)_ | Comma-separated list: `go`, `rust`, `python`, `ruby`, `deno`, `bun`, `php` |
+| `GO_VERSION` | `1.26.5` | Go pin |
+| `RUST_VERSION` | `stable` | rustup toolchain |
+| `PYTHON_VERSION` | `3.15` | uv-managed Python |
+| `RUBY_VERSION` | `4.0.6` | rbenv Ruby |
+| `DENO_VERSION` | `2.9.4` | Deno pin |
+| `BUN_TOOLCHAIN_VERSION` | `1.3.14` | user-space Bun pin |
+| `PHP_VERSION` | `8.5.8` | phpenv PHP pin |
+
+Aliases: `golang`→go, `cargo`/`rustup`→rust, `py`/`uv`→python, `rb`/`rbenv`→ruby, `composer`→php.  
+Legacy `INSTALL_GO=1` / `INSTALL_RUST=1` / `INSTALL_PYTHON=1` / etc. still work and are merged into the list.
+
+**Bake default list at build** (install still runs on first start into home — needs network once):
+
+```bash
+docker build --target debian \
+  --build-arg INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php \
+  --build-arg GO_VERSION=1.26.5 \
+  --build-arg PYTHON_VERSION=3.15 \
+  -t vibecode-aio:debian .
+```
+
+**Enable at run** (no rebuild):
+
+```bash
+docker run -d --name vibecode-aio \
+  --env-file .env \
+  -e INSTALL_TOOLCHAINS=go,rust,python,deno,bun \
+  -e GO_VERSION=1.26.5 \
+  -p 3000:3000 -p 20128:20128 \
+  -v vibecode-home:/home/vibecoder \
+  vibecode-aio:debian
+```
+
+Or set `INSTALL_TOOLCHAINS=...` in `.env`. Installs are **idempotent**; failures warn and do not block the apps.
+
+#### Manual install (any time)
+
+```bash
+docker exec -u vibecoder -it vibecode-aio install-go
+docker exec -u vibecoder -it vibecode-aio install-rust
+docker exec -u vibecoder -it vibecode-aio install-python   # uv + Python
+docker exec -u vibecoder -it vibecode-aio install-ruby     # rbenv + Ruby
+docker exec -u vibecoder -it vibecode-aio install-deno
+docker exec -u vibecoder -it vibecode-aio install-bun      # user-space Bun
+docker exec -u vibecoder -it vibecode-aio install-php      # phpenv + PHP
+```
+
+| Name | How | Home paths | Notes |
+| --- | --- | --- | --- |
+| `go` | official tarball | `~/sdk/go`, `~/go` | Fast binary install |
+| `rust` | rustup | `~/.cargo`, `~/.rustup` | Fast binary install |
+| `python` | [uv](https://github.com/astral-sh/uv) | `~/.local`, uv cache | Fast; good default Python |
+| `ruby` | rbenv + ruby-build | `~/.rbenv` | **Compiles** from source — needs build deps |
+| `deno` | official installer | `~/.deno` | Fast binary install |
+| `bun` | official installer | `~/.bun` | Fast binary install; image already includes Bun too |
+| `php` | phpenv + php-build | `~/.phpenv` | **Compiles** from source — needs build deps |
+
+Ruby, PHP, and native gems/crates may need OS packages once (ephemeral to the image layer):
+
+```bash
+# debian, as root inside container if compile fails:
+# apt-get update && apt-get install -y build-essential autoconf bison re2c pkg-config \
+#   libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev \
+#   libcurl4-openssl-dev libxml2-dev libsqlite3-dev libonig-dev libzip-dev
+```
+
+#### Already in the image (no install needed)
+
+Node, npm, pnpm, Bun, `gh`, Chromium, and the agent stack ship in the image. The `bun` toolchain option installs a second user-space Bun under `~/.bun` only when you explicitly ask for it.
+
+#### Suggested extras (DIY under `$HOME`)
+
+Not shipped as `install-*` yet — same pattern: put binaries under home so the volume keeps them.
+
+| Tool | Typical home install |
+| --- | --- |
+| **Java** | [SDKMAN](https://sdkman.io) → `~/.sdkman` |
+| **Zig** | tarball under `~/sdk/zig` + symlink in `~/.local/bin` |
+| **Terraform / OpenTofu** | binary in `~/.local/bin` |
+| **kubectl / helm** | binaries in `~/.local/bin` |
+| **mise** | one version manager for many languages → `~/.local` |
+
+Do not install into `/usr/local` if you want persistence across image pulls.
 
 ---
 
@@ -119,7 +262,7 @@ Troubleshooting: if a workspace does not have a `.codegraph/` index yet, the Cod
 
 RTK is initialized for OpenCode automatically on container startup when the `rtk` binary is available. Set `RTK_OPENCODE_INIT=0` to disable that behavior. RTK telemetry is disabled by default with `RTK_TELEMETRY_DISABLED=1`.
 
-RTK is available in Debian images and Alpine x86_64 images. Alpine arm64 skips RTK because upstream does not publish an Alpine-compatible arm64 binary yet; the entrypoint logs a warning and continues startup.
+RTK is available in the Debian image.
 
 Verify the correct RTK installation with `rtk --version` and `rtk gain`. RTK is the Rust Token Killer from [rtk-ai/rtk](https://github.com/rtk-ai/rtk); do not install the unrelated npm package named `rtk`.
 
@@ -139,24 +282,24 @@ After editing `/home/vibecoder/.config/opencode/opencode.json`, restart the cont
 ## Build from source
 
 ```bash
-# Alpine (default)
-docker build --target alpine -t vibecode-aio:alpine .
-
-# Debian
 docker build --target debian -t vibecode-aio:debian .
 
 # Pin upstream package versions
-docker build --target alpine \
+docker build --target debian \
   --build-arg NINEROUTER_VERSION=0.5.35 \
   --build-arg OPENCODE_VERSION=1.18.3 \
   --build-arg OPENCHAMBER_VERSION=1.16.2 \
-  -t vibecode-aio:alpine .
+  -t vibecode-aio:debian .
+
+# Default auto-install toolchains into home volume on container start
+docker build --target debian \
+  --build-arg INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php \
+  -t vibecode-aio:debian .
 ```
 
 | Variant | Base | Notes |
 | --- | --- | --- |
-| `alpine` | Bun Alpine + Node LTS | Default, smaller |
-| `debian` | Bun Debian + Node LTS | glibc OpenCode binary |
+| `debian` | Bun Debian + Node LTS | glibc image; better for language toolchains |
 
 ---
 
@@ -208,23 +351,20 @@ git tag "v$(tr -d '[:space:]' < VERSION)"
 git push origin "v$(tr -d '[:space:]' < VERSION)"
 ```
 
-**Release** builds alpine + debian and pushes:
+**Release** builds the Debian image and pushes:
 
 ```text
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z          # alpine (default)
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-alpine
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-debian
-ghcr.io/faytranevozter/vibecode-aio:alpine
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z
 ghcr.io/faytranevozter/vibecode-aio:debian
-ghcr.io/faytranevozter/vibecode-aio:latest           # alpine
+ghcr.io/faytranevozter/vibecode-aio:latest
 ```
 
 ### Automation overview
 
 | Workflow | When | What |
 | --- | --- | --- |
-| **CI** | PR/push to image-related files | Build alpine + debian (no push) |
-| **Release** | Git tag `v*.*.*` | Push both variants to GHCR |
+| **CI** | PR/push to image-related files | Build Debian image (no push) |
+| **Release** | Git tag `v*.*.*` | Push Debian image to GHCR |
 | **Watch upstream** | Every 3 hours + manual | Open PR for newer npm packages |
 
 Needs:
