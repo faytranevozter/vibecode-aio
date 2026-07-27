@@ -9,6 +9,17 @@ ARG CONTEXT7_MCP_VERSION=3.2.5
 ARG CHROME_DEVTOOLS_MCP_VERSION=1.6.0
 ARG CODEGRAPH_VERSION=1.5.0
 ARG RTK_VERSION=0.43.0
+# Optional toolchains: comma-separated names baked as image default (override with -e).
+# Example: INSTALL_TOOLCHAINS=go,rust,python,ruby,deno,bun,php
+# Entrypoint installs into $HOME on startup if missing (needs network once).
+ARG INSTALL_TOOLCHAINS=
+ARG GO_VERSION=1.26.5
+ARG RUST_VERSION=stable
+ARG PYTHON_VERSION=3.15
+ARG RUBY_VERSION=4.0.6
+ARG DENO_VERSION=2.9.4
+ARG BUN_TOOLCHAIN_VERSION=1.3.14
+ARG PHP_VERSION=8.5.8
 
 # -----------------------------------------------------------------------------
 # packages-alpine: install npm packages on Node LTS Alpine (musl)
@@ -95,6 +106,14 @@ RUN apt-get update \
 FROM oven/bun:${BUN_VERSION} AS debian
 
 ARG RTK_VERSION
+ARG INSTALL_TOOLCHAINS=
+ARG GO_VERSION=1.26.5
+ARG RUST_VERSION=stable
+ARG PYTHON_VERSION=3.15
+ARG RUBY_VERSION=4.0.6
+ARG DENO_VERSION=2.9.4
+ARG BUN_TOOLCHAIN_VERSION=1.3.14
+ARG PHP_VERSION=8.5.8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -161,7 +180,25 @@ ENV HOME=/home/vibecoder \
     PORT=20128 \
     HOSTNAME=0.0.0.0 \
     DATA_DIR=/home/vibecoder/.local/share/9router \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    GOPATH=/home/vibecoder/go \
+    GOROOT=/home/vibecoder/sdk/go \
+    CARGO_HOME=/home/vibecoder/.cargo \
+    RUSTUP_HOME=/home/vibecoder/.rustup \
+    RBENV_ROOT=/home/vibecoder/.rbenv \
+    PHPENV_ROOT=/home/vibecoder/.phpenv \
+    DENO_INSTALL=/home/vibecoder/.deno \
+    BUN_INSTALL=/home/vibecoder/.bun \
+    UV_INSTALL_DIR=/home/vibecoder/.local \
+    INSTALL_TOOLCHAINS=${INSTALL_TOOLCHAINS} \
+    GO_VERSION=${GO_VERSION} \
+    RUST_VERSION=${RUST_VERSION} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    RUBY_VERSION=${RUBY_VERSION} \
+    DENO_VERSION=${DENO_VERSION} \
+    BUN_TOOLCHAIN_VERSION=${BUN_TOOLCHAIN_VERSION} \
+    PHP_VERSION=${PHP_VERSION} \
+    PATH=/home/vibecoder/sdk/go/bin:/home/vibecoder/go/bin:/home/vibecoder/.cargo/bin:/home/vibecoder/.deno/bin:/home/vibecoder/.bun/bin:/home/vibecoder/.rbenv/shims:/home/vibecoder/.rbenv/bin:/home/vibecoder/.phpenv/shims:/home/vibecoder/.phpenv/bin:/home/vibecoder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN mkdir -p \
         /home/vibecoder/.config/openchamber \
@@ -169,17 +206,35 @@ RUN mkdir -p \
         /home/vibecoder/.local/share/opencode \
         /home/vibecoder/.local/state/opencode \
         /home/vibecoder/.local/share/9router \
+        /home/vibecoder/.local/bin \
         /home/vibecoder/workspaces \
+        /home/vibecoder/sdk \
+        /home/vibecoder/go \
     && chown -R vibecoder:vibecoder /home/vibecoder
 
 COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
 COPY --chown=vibecoder:vibecoder opencode.default.json /usr/local/share/vibecode/opencode.default.json
-RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder scripts/install-go.sh scripts/install-rust.sh scripts/install-python.sh scripts/install-ruby.sh scripts/install-deno.sh scripts/install-bun.sh scripts/install-php.sh /usr/local/share/vibecode/
+RUN chmod 0755 /usr/local/bin/vibecode-entrypoint \
+        /usr/local/share/vibecode/install-go.sh \
+        /usr/local/share/vibecode/install-rust.sh \
+        /usr/local/share/vibecode/install-python.sh \
+        /usr/local/share/vibecode/install-ruby.sh \
+        /usr/local/share/vibecode/install-deno.sh \
+        /usr/local/share/vibecode/install-bun.sh \
+        /usr/local/share/vibecode/install-php.sh \
+    && ln -sf /usr/local/share/vibecode/install-go.sh /usr/local/bin/install-go \
+    && ln -sf /usr/local/share/vibecode/install-rust.sh /usr/local/bin/install-rust \
+    && ln -sf /usr/local/share/vibecode/install-python.sh /usr/local/bin/install-python \
+    && ln -sf /usr/local/share/vibecode/install-ruby.sh /usr/local/bin/install-ruby \
+    && ln -sf /usr/local/share/vibecode/install-deno.sh /usr/local/bin/install-deno \
+    && ln -sf /usr/local/share/vibecode/install-bun.sh /usr/local/bin/install-bun \
+    && ln -sf /usr/local/share/vibecode/install-php.sh /usr/local/bin/install-php
 
 USER vibecoder
 WORKDIR /home/vibecoder/workspaces
 
-VOLUME ["/home/vibecoder/.config/openchamber", "/home/vibecoder/.config/opencode", "/home/vibecoder/.local/share/opencode", "/home/vibecoder/.local/state/opencode", "/home/vibecoder/.local/share/9router", "/home/vibecoder/workspaces"]
+VOLUME ["/home/vibecoder"]
 EXPOSE 3000 20128
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:20128/api/health >/dev/null || exit 1
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]
@@ -190,6 +245,14 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]
 FROM oven/bun:${BUN_VERSION}-alpine AS alpine
 
 ARG RTK_VERSION
+ARG INSTALL_TOOLCHAINS=
+ARG GO_VERSION=1.26.5
+ARG RUST_VERSION=stable
+ARG PYTHON_VERSION=3.15
+ARG RUBY_VERSION=4.0.6
+ARG DENO_VERSION=2.9.4
+ARG BUN_TOOLCHAIN_VERSION=1.3.14
+ARG PHP_VERSION=8.5.8
 
 RUN apk add --no-cache \
         bash \
@@ -256,7 +319,25 @@ ENV HOME=/home/vibecoder \
     PORT=20128 \
     HOSTNAME=0.0.0.0 \
     DATA_DIR=/home/vibecoder/.local/share/9router \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    GOPATH=/home/vibecoder/go \
+    GOROOT=/home/vibecoder/sdk/go \
+    CARGO_HOME=/home/vibecoder/.cargo \
+    RUSTUP_HOME=/home/vibecoder/.rustup \
+    RBENV_ROOT=/home/vibecoder/.rbenv \
+    PHPENV_ROOT=/home/vibecoder/.phpenv \
+    DENO_INSTALL=/home/vibecoder/.deno \
+    BUN_INSTALL=/home/vibecoder/.bun \
+    UV_INSTALL_DIR=/home/vibecoder/.local \
+    INSTALL_TOOLCHAINS=${INSTALL_TOOLCHAINS} \
+    GO_VERSION=${GO_VERSION} \
+    RUST_VERSION=${RUST_VERSION} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    RUBY_VERSION=${RUBY_VERSION} \
+    DENO_VERSION=${DENO_VERSION} \
+    BUN_TOOLCHAIN_VERSION=${BUN_TOOLCHAIN_VERSION} \
+    PHP_VERSION=${PHP_VERSION} \
+    PATH=/home/vibecoder/sdk/go/bin:/home/vibecoder/go/bin:/home/vibecoder/.cargo/bin:/home/vibecoder/.deno/bin:/home/vibecoder/.bun/bin:/home/vibecoder/.rbenv/shims:/home/vibecoder/.rbenv/bin:/home/vibecoder/.phpenv/shims:/home/vibecoder/.phpenv/bin:/home/vibecoder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN mkdir -p \
         /home/vibecoder/.config/openchamber \
@@ -264,17 +345,35 @@ RUN mkdir -p \
         /home/vibecoder/.local/share/opencode \
         /home/vibecoder/.local/state/opencode \
         /home/vibecoder/.local/share/9router \
+        /home/vibecoder/.local/bin \
         /home/vibecoder/workspaces \
+        /home/vibecoder/sdk \
+        /home/vibecoder/go \
     && chown -R vibecoder:vibecoder /home/vibecoder
 
 COPY --chown=vibecoder:vibecoder docker-entrypoint.sh /usr/local/bin/vibecode-entrypoint
 COPY --chown=vibecoder:vibecoder opencode.default.json /usr/local/share/vibecode/opencode.default.json
-RUN chmod 0755 /usr/local/bin/vibecode-entrypoint
+COPY --chown=vibecoder:vibecoder scripts/install-go.sh scripts/install-rust.sh scripts/install-python.sh scripts/install-ruby.sh scripts/install-deno.sh scripts/install-bun.sh scripts/install-php.sh /usr/local/share/vibecode/
+RUN chmod 0755 /usr/local/bin/vibecode-entrypoint \
+        /usr/local/share/vibecode/install-go.sh \
+        /usr/local/share/vibecode/install-rust.sh \
+        /usr/local/share/vibecode/install-python.sh \
+        /usr/local/share/vibecode/install-ruby.sh \
+        /usr/local/share/vibecode/install-deno.sh \
+        /usr/local/share/vibecode/install-bun.sh \
+        /usr/local/share/vibecode/install-php.sh \
+    && ln -sf /usr/local/share/vibecode/install-go.sh /usr/local/bin/install-go \
+    && ln -sf /usr/local/share/vibecode/install-rust.sh /usr/local/bin/install-rust \
+    && ln -sf /usr/local/share/vibecode/install-python.sh /usr/local/bin/install-python \
+    && ln -sf /usr/local/share/vibecode/install-ruby.sh /usr/local/bin/install-ruby \
+    && ln -sf /usr/local/share/vibecode/install-deno.sh /usr/local/bin/install-deno \
+    && ln -sf /usr/local/share/vibecode/install-bun.sh /usr/local/bin/install-bun \
+    && ln -sf /usr/local/share/vibecode/install-php.sh /usr/local/bin/install-php
 
 USER vibecoder
 WORKDIR /home/vibecoder/workspaces
 
-VOLUME ["/home/vibecoder/.config/openchamber", "/home/vibecoder/.config/opencode", "/home/vibecoder/.local/share/opencode", "/home/vibecoder/.local/state/opencode", "/home/vibecoder/.local/share/9router", "/home/vibecoder/workspaces"]
+VOLUME ["/home/vibecoder"]
 EXPOSE 3000 20128
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:20128/api/health >/dev/null || exit 1
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/vibecode-entrypoint"]
