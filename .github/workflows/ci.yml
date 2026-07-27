@@ -28,12 +28,8 @@ concurrency:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build image
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [alpine, debian]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -53,43 +49,23 @@ jobs:
           echo "openchamber=${openchamber}" >> "$GITHUB_OUTPUT"
           echo "app=${app}" >> "$GITHUB_OUTPUT"
 
-      - name: Build ${{ matrix.target }} (no push)
+      - name: Build image (no push)
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          target: ${{ matrix.target }}
+          target: debian
           push: false
           load: true
-          tags: vibecode-aio:ci-${{ matrix.target }}
+          tags: vibecode-aio:ci
           build-args: |
             NINEROUTER_VERSION=${{ steps.versions.outputs.ninerouter }}
             OPENCODE_VERSION=${{ steps.versions.outputs.opencode }}
             OPENCHAMBER_VERSION=${{ steps.versions.outputs.openchamber }}
-          cache-from: type=gha,scope=ci-${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=ci-${{ matrix.target }}
+          cache-from: type=gha,scope=ci-debian
+          cache-to: type=gha,mode=max,scope=ci-debian
 
       - name: Smoke CLI versions
         run: |
-          docker run --rm --entrypoint sh vibecode-aio:ci-${{ matrix.target }} -c \
+          docker run --rm --entrypoint sh vibecode-aio:ci -c \
             'node --version && opencode --version && openchamber --version && 9router --version'
-
-  rtk-skip-arm64-alpine:
-    name: RTK skip (arm64 alpine)
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Verify RTK is skipped on Alpine arm64
-        run: |
-          docker run --rm \
-            -v "$PWD/Dockerfile:/Dockerfile:ro" \
-            alpine:3 sh -c '
-              set -eu
-              apk add --no-cache curl
-              RTK_VERSION="$(sed -n "s/^ARG RTK_VERSION=//p" /Dockerfile | head -n1)"
-              test -n "$RTK_VERSION"
-              status="$(curl -sSL -o /dev/null -w "%{http_code}" "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-aarch64-unknown-linux-musl.tar.gz")"
-              test "$status" = "404"
-            '

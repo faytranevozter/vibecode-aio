@@ -18,16 +18,8 @@ env:
 
 jobs:
   release:
-    name: Publish ${{ matrix.target }}
+    name: Publish image
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: alpine
-            is_default: true
-          - target: debian
-            is_default: false
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -79,22 +71,21 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=v${{ steps.meta.outputs.version }}-${{ matrix.target }}
-            type=raw,value=v${{ steps.meta.outputs.version }},enable=${{ matrix.is_default }}
-            type=raw,value=${{ matrix.target }}
-            type=raw,value=latest,enable=${{ matrix.is_default }}
+            type=raw,value=v${{ steps.meta.outputs.version }}
+            type=raw,value=debian
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.title=vibecode-aio
             org.opencontainers.image.description=9router + OpenCode + OpenChamber
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
-      - name: Build and push ${{ matrix.target }}
+      - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          target: ${{ matrix.target }}
+          target: debian
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
@@ -102,13 +93,13 @@ jobs:
             NINEROUTER_VERSION=${{ steps.versions.outputs.ninerouter }}
             OPENCODE_VERSION=${{ steps.versions.outputs.opencode }}
             OPENCHAMBER_VERSION=${{ steps.versions.outputs.openchamber }}
-          cache-from: type=gha,scope=release-${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.target }}
+          cache-from: type=gha,scope=release-debian
+          cache-to: type=gha,mode=max,scope=release-debian
 
       - name: Summary
         run: |
           {
-            echo "## Published \`${{ matrix.target }}\`"
+            echo "## Published image"
             echo ""
             echo "\`\`\`"
             echo "${{ steps.docker_meta.outputs.tags }}"

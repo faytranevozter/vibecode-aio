@@ -40,10 +40,8 @@ The whole home directory is a single named volume so app config, workspaces, she
 
 | Tag | Use when |
 | --- | --- |
-| `debian` | **Recommended** for Go/Rust and most prebuilt toolchains (glibc) |
-| `latest` or `alpine` | Smaller Alpine image; fine for Node/agent work, weaker native binary compat |
-| `v0.1.1` | Pin a release (same as that release’s alpine) |
-| `v0.1.1-alpine` / `v0.1.1-debian` | Pin a specific variant of a release |
+| `latest` or `debian` | Current Debian/glibc image |
+| `v0.1.1` | Pin a release |
 
 Private package? Log in first:
 
@@ -107,7 +105,7 @@ copy_vol() {
   docker run --rm \
     -v "${src_vol}:/from:ro" \
     -v vibecode-home:/to \
-    alpine sh -c "mkdir -p \"/to/${dest_sub}\" && cp -a /from/. \"/to/${dest_sub}/\" && chown -R 1000:1000 \"/to/${dest_sub}\""
+    debian:bookworm-slim sh -c "mkdir -p \"/to/${dest_sub}\" && cp -a /from/. \"/to/${dest_sub}/\" && chown -R 1000:1000 \"/to/${dest_sub}\""
 }
 
 copy_vol vibecode-openchamber      .config/openchamber
@@ -264,7 +262,7 @@ Troubleshooting: if a workspace does not have a `.codegraph/` index yet, the Cod
 
 RTK is initialized for OpenCode automatically on container startup when the `rtk` binary is available. Set `RTK_OPENCODE_INIT=0` to disable that behavior. RTK telemetry is disabled by default with `RTK_TELEMETRY_DISABLED=1`.
 
-RTK is available in Debian images and Alpine x86_64 images. Alpine arm64 skips RTK because upstream does not publish an Alpine-compatible arm64 binary yet; the entrypoint logs a warning and continues startup.
+RTK is available in the Debian image.
 
 Verify the correct RTK installation with `rtk --version` and `rtk gain`. RTK is the Rust Token Killer from [rtk-ai/rtk](https://github.com/rtk-ai/rtk); do not install the unrelated npm package named `rtk`.
 
@@ -284,18 +282,14 @@ After editing `/home/vibecoder/.config/opencode/opencode.json`, restart the cont
 ## Build from source
 
 ```bash
-# Alpine (default)
-docker build --target alpine -t vibecode-aio:alpine .
-
-# Debian
 docker build --target debian -t vibecode-aio:debian .
 
 # Pin upstream package versions
-docker build --target alpine \
+docker build --target debian \
   --build-arg NINEROUTER_VERSION=0.5.35 \
   --build-arg OPENCODE_VERSION=1.18.3 \
   --build-arg OPENCHAMBER_VERSION=1.16.2 \
-  -t vibecode-aio:alpine .
+  -t vibecode-aio:debian .
 
 # Default auto-install toolchains into home volume on container start
 docker build --target debian \
@@ -305,8 +299,7 @@ docker build --target debian \
 
 | Variant | Base | Notes |
 | --- | --- | --- |
-| `alpine` | Bun Alpine + Node LTS | Default, smaller |
-| `debian` | Bun Debian + Node LTS | glibc OpenCode binary; better for Go/Rust |
+| `debian` | Bun Debian + Node LTS | glibc image; better for language toolchains |
 
 ---
 
@@ -358,23 +351,20 @@ git tag "v$(tr -d '[:space:]' < VERSION)"
 git push origin "v$(tr -d '[:space:]' < VERSION)"
 ```
 
-**Release** builds alpine + debian and pushes:
+**Release** builds the Debian image and pushes:
 
 ```text
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z          # alpine (default)
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-alpine
-ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z-debian
-ghcr.io/faytranevozter/vibecode-aio:alpine
+ghcr.io/faytranevozter/vibecode-aio:vX.Y.Z
 ghcr.io/faytranevozter/vibecode-aio:debian
-ghcr.io/faytranevozter/vibecode-aio:latest           # alpine
+ghcr.io/faytranevozter/vibecode-aio:latest
 ```
 
 ### Automation overview
 
 | Workflow | When | What |
 | --- | --- | --- |
-| **CI** | PR/push to image-related files | Build alpine + debian (no push) |
-| **Release** | Git tag `v*.*.*` | Push both variants to GHCR |
+| **CI** | PR/push to image-related files | Build Debian image (no push) |
+| **Release** | Git tag `v*.*.*` | Push Debian image to GHCR |
 | **Watch upstream** | Every 3 hours + manual | Open PR for newer npm packages |
 
 Needs:
