@@ -27,10 +27,12 @@ fi
 
 cat > "$tmp_dir/bin/docker" <<'EOF'
 #!/bin/sh
-if [ "${3:-}" = info ]; then
-  [ "${FAKE_DOCKER_INFO_FAIL:-0}" != 1 ]
-  exit
-fi
+for arg do
+  if [ "$arg" = info ]; then
+    [ "${FAKE_DOCKER_INFO_FAIL:-0}" != 1 ]
+    exit
+  fi
+done
 printf '%s\n' "$@"
 EOF
 
@@ -70,6 +72,13 @@ assert_arg() {
   printf '%s\n' "$output" | grep -Fqx -- "$1"
 }
 
+assert_no_arg() {
+  if printf '%s\n' "$output" | grep -Fqx -- "$1"; then
+    printf '%s\n' "unexpected launcher argument: $1" >&2
+    exit 1
+  fi
+}
+
 assert_arg run
 assert_arg "unix://$tmp_dir/docker.sock"
 assert_arg --rm
@@ -90,6 +99,7 @@ assert_arg ghcr.io/faytranevozter/vibecode-aio:debian
 
 override_env="$tmp_dir/custom.env"
 : > "$override_env"
+override_env="$(CDPATH= cd -- "$(dirname -- "$override_env")" && pwd -P)/$(basename -- "$override_env")"
 output="$(PATH="$tmp_dir/bin:$PATH" \
   VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
   VIBECODE_ENV_FILE="$override_env" \
@@ -101,6 +111,16 @@ assert_arg "$override_env"
 assert_arg 4321
 assert_arg vibecode-aio:test
 
+local_env="$tmp_dir/local.env"
+printf '%s\n' 'DOCKER_HOST=tcp://ignored.example.test:2376' > "$local_env"
+local_env="$(CDPATH= cd -- "$(dirname -- "$local_env")" && pwd -P)/$(basename -- "$local_env")"
+output="$(PATH="$tmp_dir/bin:$PATH" \
+  VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
+  VIBECODE_ENV_FILE="$local_env" \
+  VIBECODE_DOCKER_SOCKET="$tmp_dir/docker.sock" \
+  "$launcher")"
+assert_arg 'DOCKER_HOST='
+
 output="$(PATH="$tmp_dir/bin:$PATH" \
   FAKE_UNAME=Darwin \
   VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
@@ -109,6 +129,61 @@ output="$(PATH="$tmp_dir/bin:$PATH" \
   "$launcher")"
 assert_arg --group-add
 assert_arg 0
+
+output="$(PATH="$tmp_dir/bin:$PATH" \
+  FAKE_UNAME=Darwin \
+  VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
+  VIBECODE_ENV_FILE="$override_env" \
+  VIBECODE_DOCKER_SOCKET="$tmp_dir/docker.sock" \
+  VIBECODE_DOCKER_GID=4321 \
+  "$launcher")"
+assert_arg --group-add
+assert_arg 4321
+
+output="$(PATH="$tmp_dir/bin:$PATH" \
+  DOCKER_HOST="unix://$tmp_dir/docker.sock" \
+  VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
+  VIBECODE_ENV_FILE="$override_env" \
+  "$launcher")"
+assert_arg --group-add
+assert_arg 1234
+assert_arg "type=bind,\"src=$tmp_dir/docker.sock\",dst=/var/run/docker.sock"
+assert_no_arg "DOCKER_HOST=unix://$tmp_dir/docker.sock"
+
+output="$(PATH="$tmp_dir/bin:$PATH" \
+  DOCKER_HOST=tcp://docker.example.test:2376 \
+  VIBECODE_WORKSPACE="$tmp_dir/workspace,with-comma" \
+  VIBECODE_ENV_FILE="$override_env" \
+  VIBECODE_DOCKER_SOCKET="$tmp_dir/missing.sock" \
+  "$launcher")"
+assert_arg --env
+assert_arg 'DOCKER_HOST=tcp://docker.example.test:2376'
+assert_no_arg --group-add
+assert_no_arg 'type=bind,"src='$tmp_dir'/missing.sock",dst=/var/run/docker.sock'
+
+if error="$(PATH="$tmp_dir/bin:$PATH" \
+  DOCKER_HOST=ssh://docker.example.test \
+  FAKE_DOCKER_INFO_FAIL=1 \
+  VIBECODE_ENV_FILE="$override_env" \
+  "$launcher" 2>&1)"; then
+  printf '%s\n' 'expected an unreachable remote Docker daemon to fail' >&2
+  exit 1
+fi
+printf '%s\n' "$error" | grep -Fq \
+  'cannot connect to remote Docker daemon: ssh://docker.example.test'
+printf '%s\n' "$error" | grep -Fq \
+  "check DOCKER_HOST and the host Docker client's credentials"
+
+if error="$(PATH="$tmp_dir/bin:$PATH" \
+  VIBECODE_ENV_FILE="$override_env" \
+  VIBECODE_DOCKER_SOCKET="$tmp_dir/docker.sock" \
+  VIBECODE_DOCKER_GID=not-a-gid \
+  "$launcher" 2>&1)"; then
+  printf '%s\n' 'expected a nonnumeric Docker socket GID to fail' >&2
+  exit 1
+fi
+printf '%s\n' "$error" | grep -Fq \
+  'Docker socket group must be a numeric GID: not-a-gid'
 
 if error="$(PATH="$tmp_dir/bin:$PATH" \
   VIBECODE_ENV_FILE="$override_env" \

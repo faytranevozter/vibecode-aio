@@ -53,6 +53,7 @@ The launcher defaults to the current host directory, mounts it at the same absol
 | `VIBECODE_DOCKER_SOCKET` | `/var/run/docker.sock` | Select a rootless or alternative-engine socket |
 | `VIBECODE_DOCKER_GID` | Socket group on Linux | Override group detection on unusual Linux hosts |
 | `VIBECODE_IMAGE` | `ghcr.io/faytranevozter/vibecode-aio:debian` | Run another Vibecode image or a local build |
+| `DOCKER_HOST` | Unset (local socket mode) | Select a remote Docker daemon; `unix://` values remain in local socket mode |
 
 For example:
 
@@ -62,7 +63,15 @@ VIBECODE_ENV_FILE="$HOME/.config/vibecode/env" \
 ./scripts/run-with-docker.sh
 ```
 
-The launcher validates the socket and daemon connection before starting. On Linux, including Docker Desktop through WSL2, it detects the socket GID and supplies it as a supplementary group to the non-root `vibecoder` user. On macOS Docker Desktop and OrbStack, it supplies the group used by the socket after it is exposed inside the Linux VM.
+The launcher validates the socket and daemon connection before starting. On Linux it detects the socket GID and supplies it as a supplementary group to the non-root `vibecoder` user. Rootless Docker and alternative engines can select their socket explicitly, and unusual permission setups can override group detection:
+
+```bash
+VIBECODE_DOCKER_SOCKET="$XDG_RUNTIME_DIR/docker.sock" \
+VIBECODE_DOCKER_GID="$(stat -c '%g' "$XDG_RUNTIME_DIR/docker.sock")" \
+./scripts/run-with-docker.sh
+```
+
+On macOS Docker Desktop and OrbStack, run the launcher from a macOS shell. It uses group `0`, matching the socket after the desktop runtime exposes it inside its Linux VM. On Windows Docker Desktop, run the launcher from a WSL2 shell with Docker Desktop's WSL integration enabled; WSL2 follows the Linux socket and group-detection path. A native PowerShell launcher is not provided.
 
 The equivalent raw Linux command is:
 
@@ -87,6 +96,35 @@ docker run --rm --name vibecode-aio \
 
 On macOS, use the same raw command with `--group-add 0` instead of the detected host GID because Docker Desktop and OrbStack expose the mounted socket as root-owned inside their Linux VM. WSL2 uses the Linux command from a WSL shell.
 
+#### Remote Docker daemons
+
+Set standard `DOCKER_HOST` to select a remote daemon:
+
+```bash
+export DOCKER_HOST=ssh://vibecode@docker.example.com
+./scripts/run-with-docker.sh
+```
+
+In remote mode the host Docker client first verifies the connection, then creates Vibecode on that daemon and passes `DOCKER_HOST` into the container. The launcher does not inspect, validate, or mount a local socket, and it does not add a socket group. An unreachable endpoint fails before launch with the selected host and a credential-check hint.
+
+The launcher never mounts the host's `~/.docker` directory. The `vibecode-home` volume already persists `/home/vibecoder`, so Docker contexts, registry configuration, and TLS credentials created under `/home/vibecoder/.docker` survive container recreation. Configure them deliberately from inside Vibecode, for example:
+
+```bash
+docker exec -it vibecode-aio docker context create build-host \
+  --docker host=tcp://docker.example.com:2376
+docker exec -it vibecode-aio docker --context build-host info
+```
+
+Keep `DOCKER_HOST` exported for host-side commands such as `docker exec`, `docker cp`, and `docker rm`; the outer Vibecode container exists on that selected daemon.
+
+For TLS, place the client certificates under a restricted directory in `/home/vibecoder/.docker` and set `DOCKER_TLS_VERIFY` and the in-container `DOCKER_CERT_PATH` in the Vibecode environment file. The host client may use separate host-side credentials to create the outer Vibecode container; those files are not copied or exposed automatically.
+
+Remote daemon semantics differ from the local same-path workflow:
+
+- Bind-mount source paths are resolved on the remote daemon host. The local workspace is not synchronized; it must already exist at the requested path on the remote host.
+- Published ports, including Vibecode's `3000` and `20128` mappings and ports from child containers, belong to the remote host.
+- The launcher provides neither workspace synchronization nor remote port forwarding. Arrange file transfer and SSH/VPN port forwarding separately when needed.
+
 The image includes Docker CLI, Buildx, and Docker Compose v2 from Docker's official Debian repository. It does not include or supervise a Docker daemon. With the launcher started from a host project, the enabled container can use the external daemon directly:
 
 ```bash
@@ -104,6 +142,8 @@ Compose services publish ports with ordinary Docker host semantics. For example,
 Projects stored only in `vibecode-home`, such as `/home/vibecoder/workspaces/my-project`, are not ordinary host paths and cannot be shared with child containers using a bind mount. Prefer a same-path host workspace for Docker-enabled development. As an advanced alternative, explicitly attach the existing named volume to a child, for example `docker run --mount type=volume,src=vibecode-home,dst=/vibecode-home ...`; this shares the whole volume and requires the child to use the volume's internal paths deliberately.
 
 **Security warning:** access to the Docker daemon socket is effectively administrative access to the Docker host. Only mount a trusted socket into a trusted Vibecode container. A read-only socket mount does not make the Docker API read-only. OpenCode still asks for approval before running `docker *` commands.
+
+Launcher argument construction and failure behavior are exercised without requiring a daemon on Linux and macOS shells. CI runs the complete build, child-container, same-path bind mount, Compose, and published-port integration against Docker Engine on Linux. Hosted macOS and Windows runners do not expose a sufficiently equivalent Docker Desktop boundary, so those platform branches are contract-tested and documented rather than presented as daemon-level integration coverage.
 
 ### Which tag should I pull?
 
