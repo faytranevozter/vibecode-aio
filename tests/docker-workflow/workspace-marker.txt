@@ -1,0 +1,1 @@
+same-path workspace is visible to child containers

@@ -19,7 +19,7 @@ Runs as user **`vibecoder`** (`uid 1000`) with home `/home/vibecoder`.
 cp .env.example .env
 # set strong passwords/secrets in .env
 
-docker run --rm --name vibecode-aio \
+docker -H "unix://$DOCKER_SOCKET" run --rm --name vibecode-aio \
   --env-file .env \
   -p 3000:3000 \
   -p 20128:20128 \
@@ -38,31 +38,68 @@ The whole home directory is a single named volume so app config, workspaces, she
 
 ### Optional external Docker access
 
-Ordinary Vibecode startup has no Docker socket and cannot control a Docker daemon. On Linux, deliberately opt in to the host daemon by mounting its socket and adding the socket's group to the non-root `vibecoder` user:
+Ordinary Vibecode startup has no Docker socket and cannot control a Docker daemon. Keep using the recommended command above unless Vibecode needs Docker. To deliberately opt in, run the Docker-enabled launcher from the host project you want to expose:
 
 ```bash
-DOCKER_SOCKET=/var/run/docker.sock
-DOCKER_SOCKET_GID="$(stat -c '%g' "$DOCKER_SOCKET")"
+./scripts/run-with-docker.sh
+```
+
+The launcher defaults to the current host directory, mounts it at the same absolute path inside Vibecode, and makes that path the working directory. Its `.env` default is the file beside this repository's launcher (`.env` at the repository root), not a project `.env` in the selected workspace.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VIBECODE_WORKSPACE` | Current host directory | Select a different host workspace |
+| `VIBECODE_ENV_FILE` | Vibecode repository `.env` | Select a nonstandard Vibecode configuration file |
+| `VIBECODE_DOCKER_SOCKET` | `/var/run/docker.sock` | Select a rootless or alternative-engine socket |
+| `VIBECODE_DOCKER_GID` | Socket group on Linux | Override group detection on unusual Linux hosts |
+| `VIBECODE_IMAGE` | `ghcr.io/faytranevozter/vibecode-aio:debian` | Run another Vibecode image or a local build |
+
+For example:
+
+```bash
+VIBECODE_WORKSPACE=/srv/projects/my-app \
+VIBECODE_ENV_FILE="$HOME/.config/vibecode/env" \
+./scripts/run-with-docker.sh
+```
+
+The launcher validates the socket and daemon connection before starting. On Linux, including Docker Desktop through WSL2, it detects the socket GID and supplies it as a supplementary group to the non-root `vibecoder` user. On macOS Docker Desktop and OrbStack, it supplies the group used by the socket after it is exposed inside the Linux VM.
+
+The equivalent raw Linux command is:
+
+```bash
+VIBECODE_ROOT=/path/to/vibecode-aio
+WORKSPACE="$(cd "${VIBECODE_WORKSPACE:-$PWD}" && pwd -P)"
+ENV_FILE="${VIBECODE_ENV_FILE:-$VIBECODE_ROOT/.env}"
+DOCKER_SOCKET="${VIBECODE_DOCKER_SOCKET:-/var/run/docker.sock}"
+DOCKER_SOCKET_GID="${VIBECODE_DOCKER_GID:-$(stat -c '%g' "$DOCKER_SOCKET")}"
 
 docker run --rm --name vibecode-aio \
-  --env-file .env \
+  --env-file "$ENV_FILE" \
   --group-add "$DOCKER_SOCKET_GID" \
-  --mount "type=bind,src=${DOCKER_SOCKET},dst=/var/run/docker.sock" \
+  --mount "type=bind,\"src=$DOCKER_SOCKET\",dst=/var/run/docker.sock" \
+  --mount "type=bind,\"src=$WORKSPACE\",\"dst=$WORKSPACE\"" \
+  --workdir "$WORKSPACE" \
   -p 3000:3000 \
   -p 20128:20128 \
   -v vibecode-home:/home/vibecoder \
   ghcr.io/faytranevozter/vibecode-aio:debian
 ```
 
-The image includes Docker CLI, Buildx, and Docker Compose v2 from Docker's official Debian repository. It does not include or supervise a Docker daemon. With a project Dockerfile under `/home/vibecoder/workspaces/my-project`, the enabled container can use the external daemon directly:
+On macOS, use the same raw command with `--group-add 0` instead of the detected host GID because Docker Desktop and OrbStack expose the mounted socket as root-owned inside their Linux VM. WSL2 uses the Linux command from a WSL shell.
+
+The image includes Docker CLI, Buildx, and Docker Compose v2 from Docker's official Debian repository. It does not include or supervise a Docker daemon. With the launcher started from a host project, the enabled container can use the external daemon directly:
 
 ```bash
 docker exec vibecode-aio sh -c \
-  'docker build -t my-disposable-child /home/vibecoder/workspaces/my-project'
+  'docker build -t my-disposable-child .'
 docker exec vibecode-aio \
   docker run --name my-disposable-child --rm my-disposable-child
 docker exec vibecode-aio docker image rm my-disposable-child
 ```
+
+Docker bind mounts are resolved by the daemon on the host, not by the Docker CLI inside Vibecode. Mounting the host workspace into Vibecode at the same absolute path means `docker run -v "$PWD:/work" ...` and relative Compose mounts point to the real host project without path translation.
+
+Projects stored only in `vibecode-home`, such as `/home/vibecoder/workspaces/my-project`, are not ordinary host paths and cannot be shared with child containers using a bind mount. Prefer a same-path host workspace for Docker-enabled development. As an advanced alternative, explicitly attach the existing named volume to a child, for example `docker run --mount type=volume,src=vibecode-home,dst=/vibecode-home ...`; this shares the whole volume and requires the child to use the volume's internal paths deliberately.
 
 **Security warning:** access to the Docker daemon socket is effectively administrative access to the Docker host. Only mount a trusted socket into a trusted Vibecode container. A read-only socket mount does not make the Docker API read-only. OpenCode still asks for approval before running `docker *` commands.
 

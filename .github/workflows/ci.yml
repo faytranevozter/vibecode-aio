@@ -12,6 +12,8 @@ on:
       - .github/workflows/**
       - scripts/**
       - tests/docker-workflow/**
+      - README.md
+      - docs/adr/**
       - opencode.default.json
   pull_request:
     paths:
@@ -23,6 +25,8 @@ on:
       - .github/workflows/**
       - scripts/**
       - tests/docker-workflow/**
+      - README.md
+      - docs/adr/**
       - opencode.default.json
 
 permissions:
@@ -76,14 +80,29 @@ jobs:
           docker run --rm --entrypoint sh vibecode-aio:ci -c \
             'node --version && opencode --version && openchamber --version && 9router --version && ! command -v dockerd && [ ! -S /var/run/docker.sock ]'
 
+      - name: Test Docker-enabled launcher
+        run: tests/docker-workflow/launcher.sh
+
       - name: Smoke external Docker workflow
         run: |
-          socket_gid="$(stat -c '%g' /var/run/docker.sock)"
-          docker run --rm \
-            --entrypoint sh \
-            --group-add "$socket_gid" \
-            --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
-            --mount "type=bind,src=${PWD},dst=/workspace,readonly" \
-            --workdir /workspace \
-            vibecode-aio:ci \
-            tests/docker-workflow/smoke.sh
+          cleanup() {
+            docker rm -f vibecode-aio >/dev/null 2>&1 || true
+            if [ -n "${launcher_pid:-}" ]; then
+              kill "$launcher_pid" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          VIBECODE_ENV_FILE="$PWD/.env.example" \
+            VIBECODE_IMAGE=vibecode-aio:ci \
+            scripts/run-with-docker.sh &
+          launcher_pid=$!
+
+          for attempt in $(seq 1 30); do
+            if docker inspect vibecode-aio >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker inspect vibecode-aio >/dev/null
+          docker exec vibecode-aio sh tests/docker-workflow/smoke.sh
