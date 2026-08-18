@@ -99,6 +99,8 @@ docker exec vibecode-aio docker image rm my-disposable-child
 
 Docker bind mounts are resolved by the daemon on the host, not by the Docker CLI inside Vibecode. Mounting the host workspace into Vibecode at the same absolute path means `docker run -v "$PWD:/work" ...` and relative Compose mounts point to the real host project without path translation.
 
+Compose services publish ports with ordinary Docker host semantics. For example, a Compose mapping such as `8080:8080` is reachable on port `8080` of the local Docker host; it does not require another `-p 8080:8080` declaration on the outer Vibecode container.
+
 Projects stored only in `vibecode-home`, such as `/home/vibecoder/workspaces/my-project`, are not ordinary host paths and cannot be shared with child containers using a bind mount. Prefer a same-path host workspace for Docker-enabled development. As an advanced alternative, explicitly attach the existing named volume to a child, for example `docker run --mount type=volume,src=vibecode-home,dst=/vibecode-home ...`; this shares the whole volume and requires the child to use the volume's internal paths deliberately.
 
 **Security warning:** access to the Docker daemon socket is effectively administrative access to the Docker host. Only mount a trusted socket into a trusted Vibecode container. A read-only socket mount does not make the Docker API read-only. OpenCode still asks for approval before running `docker *` commands.
