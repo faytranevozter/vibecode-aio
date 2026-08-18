@@ -207,6 +207,7 @@ config.mcp['codegraph'] = {
 if (!config.permission) config.permission = {};
 if (!config.permission.bash) config.permission.bash = { '*': 'ask' };
 if (!config.permission.bash['gh *']) config.permission.bash['gh *'] = 'ask';
+if (!config.permission.bash['docker *']) config.permission.bash['docker *'] = 'ask';
 
 fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
 EOF

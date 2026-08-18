@@ -108,6 +108,20 @@ RUN apt-get update \
          useradd --uid 1000 --gid vibecoder --create-home --shell /bin/bash vibecoder; \
         fi
 
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && . /etc/os-release \
+    && printf '%s\n' \
+         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${VERSION_CODENAME} stable" \
+         > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+         docker-ce-cli \
+         docker-buildx-plugin \
+         docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN set -eu; \
     case "$(uname -m)" in \
       x86_64|amd64) RTK_TARGET=x86_64-unknown-linux-musl ;; \

@@ -55,7 +55,8 @@
   "permission": {
     "bash": {
       "*": "ask",
-      "gh *": "ask"
+      "gh *": "ask",
+      "docker *": "ask"
     }
   },
   "experimental": {

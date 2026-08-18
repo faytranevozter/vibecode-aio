@@ -36,6 +36,36 @@ Health: `GET /health` (OpenChamber), `GET /api/health` (9router).
 
 The whole home directory is a single named volume so app config, workspaces, shell history, SSH keys, and user-installed toolchains (Node.js via nvm, Go, Rust, etc.) all persist across container recreate.
 
+### Optional external Docker access
+
+Ordinary Vibecode startup has no Docker socket and cannot control a Docker daemon. On Linux, deliberately opt in to the host daemon by mounting its socket and adding the socket's group to the non-root `vibecoder` user:
+
+```bash
+DOCKER_SOCKET=/var/run/docker.sock
+DOCKER_SOCKET_GID="$(stat -c '%g' "$DOCKER_SOCKET")"
+
+docker run --rm --name vibecode-aio \
+  --env-file .env \
+  --group-add "$DOCKER_SOCKET_GID" \
+  --mount "type=bind,src=${DOCKER_SOCKET},dst=/var/run/docker.sock" \
+  -p 3000:3000 \
+  -p 20128:20128 \
+  -v vibecode-home:/home/vibecoder \
+  ghcr.io/faytranevozter/vibecode-aio:debian
+```
+
+The image includes Docker CLI, Buildx, and Docker Compose v2 from Docker's official Debian repository. It does not include or supervise a Docker daemon. With a project Dockerfile under `/home/vibecoder/workspaces/my-project`, the enabled container can use the external daemon directly:
+
+```bash
+docker exec vibecode-aio sh -c \
+  'docker build -t my-disposable-child /home/vibecoder/workspaces/my-project'
+docker exec vibecode-aio \
+  docker run --name my-disposable-child --rm my-disposable-child
+docker exec vibecode-aio docker image rm my-disposable-child
+```
+
+**Security warning:** access to the Docker daemon socket is effectively administrative access to the Docker host. Only mount a trusted socket into a trusted Vibecode container. A read-only socket mount does not make the Docker API read-only. OpenCode still asks for approval before running `docker *` commands.
+
 ### Which tag should I pull?
 
 | Tag | Use when |
@@ -216,7 +246,7 @@ Ruby, PHP, and native gems/crates may need OS packages once (ephemeral to the im
 
 #### Already in the image (no install needed)
 
-Node, npm, and pnpm are available through nvm-managed latest LTS by default after first startup. The image also includes a baked Node fallback for startup resilience, and `pnpm`/`pnpx` use wrappers so they execute through the active `node` instead of depending on package executable bits. `gh`, Chromium, and the agent stack ship in the image. The `bun` toolchain option installs Bun under `~/.bun` only when you explicitly ask for it.
+Node, npm, and pnpm are available through nvm-managed latest LTS by default after first startup. The image also includes a baked Node fallback for startup resilience, and `pnpm`/`pnpx` use wrappers so they execute through the active `node` instead of depending on package executable bits. `gh`, Docker CLI with Buildx and Compose v2, Chromium, and the agent stack ship in the image. The Docker daemon is not included. The `bun` toolchain option installs Bun under `~/.bun` only when you explicitly ask for it.
 
 #### Suggested extras (DIY under `$HOME`)
 
@@ -260,7 +290,7 @@ The image includes:
 
 On first startup, if `/home/vibecoder/.config/opencode/opencode.json` does not exist, the entrypoint seeds a default OpenCode config that enables `playwright`, `context7`, `chrome-devtools`, and `codegraph` MCP servers. If an OpenCode config already exists, the entrypoint updates only the managed MCP entries (`context7`, `codegraph`) and keeps the rest of the file intact.
 
-To authenticate `gh`, either run `gh auth login` in the container or pass `GH_TOKEN`/`GITHUB_TOKEN` in your environment. The default OpenCode permission config keeps `gh *` at `ask` because it can mutate repositories, issues, pull requests, releases, and auth state.
+To authenticate `gh`, either run `gh auth login` in the container or pass `GH_TOKEN`/`GITHUB_TOKEN` in your environment. The default OpenCode permission config keeps `gh *` at `ask` because it can mutate repositories, issues, pull requests, releases, and auth state. It also keeps `docker *` at `ask` because a connected Docker client can administer the external host.
 
 Context7 MCP reads its API key from `CONTEXT7_API_KEY`. Add it to `.env` or pass it with `docker run -e CONTEXT7_API_KEY=...`; the default OpenCode config passes it to `context7-mcp --api-key` without writing the secret into the config file.
 
@@ -407,3 +437,4 @@ No extra secrets for same-repo GHCR (`GITHUB_TOKEN` is enough).
 | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Chrome debugging/performance MCP server | npm `chrome-devtools-mcp` |
 | [CodeGraph](https://github.com/colbymchenry/codegraph) | Code intelligence CLI and MCP server | npm `@colbymchenry/codegraph` |
 | [RTK](https://github.com/rtk-ai/rtk) | Compact shell output for AI agents | Prebuilt Rust binary `rtk` |
+| [Docker CLI](https://docs.docker.com/engine/install/debian/) | Opt-in external-daemon workflows with Buildx and Compose v2 | Docker's official Debian packages |
